@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronRight } from "lucide-react";
 
 export default function PatientsList() {
   const [patients, setPatients] = useState([]);
@@ -52,11 +53,12 @@ export default function PatientsList() {
                 <th className="px-4 py-3 font-semibold">Gender</th>
                 <th className="px-4 py-3 font-semibold">Age</th>
                 <th className="px-4 py-3 font-semibold">Language</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
               {patients.length === 0 && (
-                <tr><td colSpan={6} className="p-12 text-center text-gray-400">No patients found.</td></tr>
+                <tr><td colSpan={7} className="p-12 text-center text-gray-400">No patients found.</td></tr>
               )}
               {patients.map((p) => (
                 <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
@@ -66,6 +68,11 @@ export default function PatientsList() {
                   <td className="px-4 py-3 text-gray-700">{p.gender}</td>
                   <td className="px-4 py-3 tabular-nums text-gray-700">{p.age}</td>
                   <td className="px-4 py-3 text-gray-700">{p.preferred_language}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Link to={`/reception/patients/${p.id}/timeline`} className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-800 text-sm font-medium" data-testid={`open-timeline-${p.id}`}>
+                      Timeline <ChevronRight size={14} />
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

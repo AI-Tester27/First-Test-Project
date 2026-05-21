@@ -10,6 +10,7 @@ import ReceptionDashboard from "@/pages/reception/Dashboard";
 import NewPatient from "@/pages/reception/NewPatient";
 import NewVisit from "@/pages/reception/NewVisit";
 import PatientsList from "@/pages/reception/PatientsList";
+import PatientTimeline from "@/pages/reception/PatientTimeline";
 
 import DoctorDashboard from "@/pages/doctor/Dashboard";
 import DoctorCaseDetail from "@/pages/doctor/CaseDetail";
@@ -25,6 +26,7 @@ import Receipt from "@/pages/pro/Receipt";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminUsers from "@/pages/admin/Users";
 import AdminAudit from "@/pages/admin/AuditLogs";
+import AdminExports from "@/pages/admin/Exports";
 
 export default function App() {
   return (
@@ -45,6 +47,7 @@ export default function App() {
               {/* Reception */}
               <Route path="/reception" element={<RequireAuth roles={["RECEPTION", "OWNER_DOCTOR", "ADMIN"]}><ReceptionDashboard /></RequireAuth>} />
               <Route path="/reception/patients" element={<RequireAuth roles={["RECEPTION", "OWNER_DOCTOR", "ADMIN"]}><PatientsList /></RequireAuth>} />
+              <Route path="/reception/patients/:id/timeline" element={<RequireAuth><PatientTimeline /></RequireAuth>} />
               <Route path="/reception/patients/new" element={<RequireAuth roles={["RECEPTION", "OWNER_DOCTOR", "ADMIN"]}><NewPatient /></RequireAuth>} />
               <Route path="/reception/new-visit" element={<RequireAuth roles={["RECEPTION", "OWNER_DOCTOR", "ADMIN"]}><NewVisit /></RequireAuth>} />
 
@@ -66,6 +69,7 @@ export default function App() {
               <Route path="/admin" element={<RequireAuth roles={["ADMIN"]}><AdminDashboard /></RequireAuth>} />
               <Route path="/admin/users" element={<RequireAuth roles={["ADMIN"]}><AdminUsers /></RequireAuth>} />
               <Route path="/admin/audit" element={<RequireAuth roles={["ADMIN"]}><AdminAudit /></RequireAuth>} />
+              <Route path="/admin/exports" element={<RequireAuth roles={["ADMIN"]}><AdminExports /></RequireAuth>} />
               <Route path="/admin/cases" element={<RequireAuth roles={["ADMIN"]}><DoctorDashboard scope="all" /></RequireAuth>} />
             </Route>
 

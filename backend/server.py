@@ -6,18 +6,24 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import io
+import csv
 import uuid
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, status, UploadFile, File, Query
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
+
+from storage import init_storage, put_object, get_object, ALLOWED_EXTS, MIME_TYPES, MAX_BYTES, APP_NAME
+from messaging import send_whatsapp, send_sms, provider_status
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DB
@@ -259,7 +265,12 @@ api = APIRouter(prefix="/api")
 
 @api.get("/health")
 async def health():
-    return {"status": "ok", "service": "sparsa-homeoclinic", "time": now_utc().isoformat()}
+    return {
+        "status": "ok",
+        "service": "sparsa-homeoclinic",
+        "time": now_utc().isoformat(),
+        "providers": provider_status(),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -500,7 +511,7 @@ async def save_notes(case_id: str, payload: ClinicalNoteIn, user: dict = Depends
 
 @api.post("/cases/{case_id}/prescription")
 async def save_prescription(case_id: str, payload: PrescriptionIn, user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_PHARMACY, ROLE_ADMIN))):
-    c = await _load_case_for_user(case_id, user)
+    _ = await _load_case_for_user(case_id, user)
     latest = await db.prescriptions.find({"case_id": case_id}).sort("version_no", -1).limit(1).to_list(1)
     next_v = (latest[0]["version_no"] + 1) if latest else 1
     edited_by_pharmacy = user["role"] == ROLE_PHARMACY
@@ -626,7 +637,299 @@ async def list_reminders(user: dict = Depends(get_current_user)):
     if user["role"] == ROLE_DOCTOR:
         q["doctor_id"] = user.get("doctor_id")
     reminders = await db.reminders.find(q, {"_id": 0}).sort("scheduled_at", 1).limit(50).to_list(50)
-    return {"reminders": reminders}
+    return {"reminders": reminders, "providers": provider_status()}
+
+
+@api.post("/reminders/{reminder_id}/send-now")
+async def send_reminder_now(reminder_id: str, user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_ADMIN))):
+    r = await db.reminders.find_one({"id": reminder_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    await _deliver_reminder(r)
+    fresh = await db.reminders.find_one({"id": reminder_id}, {"_id": 0})
+    return {"reminder": fresh}
+
+
+async def _deliver_reminder(reminder: dict) -> None:
+    """Attempt WhatsApp first, fall back to SMS. Mark SENT/FAILED."""
+    patient = await db.patients.find_one({"id": reminder["patient_id"]})
+    if not patient or not patient.get("phone"):
+        await db.reminders.update_one({"id": reminder["id"]}, {"$set": {
+            "status": "FAILED", "fail_reason": "NO_PHONE", "sent_at": now_utc().isoformat(),
+        }})
+        return
+    lang = patient.get("preferred_language", "EN")
+    name = f"{patient.get('first_name', '')} {patient.get('last_name', '')}".strip()
+    when = reminder.get("scheduled_at", "")
+    try:
+        when_dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
+        when_str = when_dt.strftime("%d-%b-%Y %I:%M %p")
+    except Exception:
+        when_str = when
+    if lang == "TE":
+        body = (f"నమస్తే {name},\nమీ ఫాలో-అప్ {when_str}కి సిద్ధంగా ఉంది. — Sparsa Homeoclinic")
+    else:
+        body = (f"Hi {name}, your follow-up is on {when_str}. — Sparsa Homeoclinic")
+    if reminder.get("message"):
+        body += f"\n{reminder['message']}"
+
+    ok_wa, reason_wa = send_whatsapp(patient["phone"], body)
+    if ok_wa:
+        await db.reminders.update_one({"id": reminder["id"]}, {"$set": {
+            "status": "SENT", "channel": "WHATSAPP", "sent_at": now_utc().isoformat(),
+            "message_rendered": body,
+        }})
+        return
+    ok_sms, reason_sms = send_sms(patient["phone"], body)
+    if ok_sms:
+        await db.reminders.update_one({"id": reminder["id"]}, {"$set": {
+            "status": "SENT", "channel": "SMS", "sent_at": now_utc().isoformat(),
+            "message_rendered": body, "fail_reason": f"WA: {reason_wa}",
+        }})
+        return
+    await db.reminders.update_one({"id": reminder["id"]}, {"$set": {
+        "status": "FAILED", "fail_reason": f"WA: {reason_wa} | SMS: {reason_sms}",
+        "sent_at": now_utc().isoformat(),
+    }})
+
+
+async def reminder_scheduler():
+    """Background task — every 60s, deliver any PENDING reminder whose scheduled_at has passed."""
+    while True:
+        try:
+            now_iso = now_utc().isoformat()
+            cur = db.reminders.find({"status": "PENDING", "scheduled_at": {"$lte": now_iso}}).limit(20)
+            async for r in cur:
+                await _deliver_reminder(r)
+        except Exception:
+            logging.exception("reminder_scheduler error")
+        await asyncio.sleep(60)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Attachments (Emergent object storage)
+# ─────────────────────────────────────────────────────────────────────────────
+@api.post("/cases/{case_id}/attachments")
+async def upload_attachment(case_id: str, file: UploadFile = File(...),
+                            user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN))):
+    c = await _load_case_for_user(case_id, user)
+    fname = file.filename or "upload"
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Only {sorted(ALLOWED_EXTS)} allowed")
+    data = await file.read()
+    if len(data) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 10MB limit")
+    content_type = MIME_TYPES[ext]
+    patient_uid = (await db.patients.find_one({"id": c["patient_id"]}, {"patient_uid": 1, "_id": 0})) or {}
+    path = f"{APP_NAME}/attachments/{patient_uid.get('patient_uid', 'unknown')}/{case_id}/{uuid.uuid4()}.{ext}"
+    try:
+        result = put_object(path, data, content_type)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Storage unavailable: {e}")
+    record = {
+        "id": str(uuid.uuid4()),
+        "case_id": case_id,
+        "patient_id": c["patient_id"],
+        "storage_path": result["path"],
+        "original_filename": fname,
+        "content_type": content_type,
+        "size_bytes": len(data),
+        "uploaded_by": user["id"],
+        "uploaded_by_name": user.get("name"),
+        "is_deleted": False,
+        "created_at": now_utc().isoformat(),
+    }
+    await db.attachments.insert_one(record)
+    record.pop("_id", None)
+    await audit(user, "ATTACHMENT_UPLOAD", "Attachment", record["id"], {"filename": fname, "size": len(data)})
+    return {"attachment": record}
+
+
+@api.get("/cases/{case_id}/attachments")
+async def list_attachments(case_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_for_user(case_id, user)
+    files = await db.attachments.find({"case_id": case_id, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"attachments": files}
+
+
+@api.get("/attachments/{attachment_id}/download")
+async def download_attachment(attachment_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.attachments.find_one({"id": attachment_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Not found")
+    await _load_case_for_user(rec["case_id"], user)  # access check
+    try:
+        data, ctype = get_object(rec["storage_path"])
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Storage error: {e}")
+    await audit(user, "ATTACHMENT_DOWNLOAD", "Attachment", attachment_id)
+    return Response(content=data, media_type=rec.get("content_type") or ctype,
+                    headers={"Content-Disposition": f'inline; filename="{rec["original_filename"]}"'})
+
+
+@api.delete("/attachments/{attachment_id}")
+async def delete_attachment(attachment_id: str,
+                            user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_ADMIN))):
+    rec = await db.attachments.find_one({"id": attachment_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Not found")
+    await _load_case_for_user(rec["case_id"], user)
+    await db.attachments.update_one({"id": attachment_id}, {"$set": {"is_deleted": True, "deleted_at": now_utc().isoformat(), "deleted_by": user["id"]}})
+    await audit(user, "ATTACHMENT_DELETE", "Attachment", attachment_id)
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Patient timeline
+# ─────────────────────────────────────────────────────────────────────────────
+@api.get("/patients/{patient_id}/timeline")
+async def patient_timeline(patient_id: str, user: dict = Depends(get_current_user)):
+    patient = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    # cases for this patient — apply doctor scope
+    q = {"patient_id": patient_id}
+    if user["role"] == ROLE_DOCTOR:
+        q["assigned_doctor_id"] = user.get("doctor_id")
+    cases = await db.cases.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+    entries = []
+    for c in cases:
+        doctor = await db.doctor_profiles.find_one({"id": c["assigned_doctor_id"]}, {"_id": 0})
+        payment = await db.payments.find_one({"case_id": c["id"]}, {"_id": 0})
+        notes = None
+        prescriptions = []
+        attachments_count = 0
+        if user["role"] in (ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_ADMIN):
+            notes = await db.clinical_notes.find_one({"case_id": c["id"]}, {"_id": 0})
+        if user["role"] in (ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_PHARMACY, ROLE_ADMIN):
+            prescriptions = await db.prescriptions.find({"case_id": c["id"]}, {"_id": 0}).sort("version_no", -1).to_list(10)
+        attachments_count = await db.attachments.count_documents({"case_id": c["id"], "is_deleted": False})
+        entries.append({
+            "case": c,
+            "doctor": doctor,
+            "payment": payment if user["role"] != ROLE_DOCTOR or c["assigned_doctor_id"] == user.get("doctor_id") else None,
+            "clinical_notes": notes,
+            "prescriptions": prescriptions,
+            "attachments_count": attachments_count,
+        })
+
+    return {"patient": patient, "timeline": entries}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CSV exports (admin only)
+# ─────────────────────────────────────────────────────────────────────────────
+def _csv_response(rows: list[dict], fieldnames: list[str], filename: str) -> StreamingResponse:
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api.get("/admin/export/patients.csv")
+async def export_patients(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OWNER_DOCTOR))):
+    rows = await db.patients.find({}, {"_id": 0}).to_list(100000)
+    await audit(user, "EXPORT", "Patient", "csv", {"rows": len(rows)})
+    return _csv_response(
+        rows,
+        ["patient_uid", "first_name", "last_name", "gender", "age", "phone", "address", "preferred_language", "created_at"],
+        "sparsa-patients.csv",
+    )
+
+
+@api.get("/admin/export/cases.csv")
+async def export_cases(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OWNER_DOCTOR))):
+    cases = await db.cases.find({}, {"_id": 0}).to_list(100000)
+    rows = []
+    for c in cases:
+        patient = await db.patients.find_one({"id": c["patient_id"]}, {"_id": 0, "patient_uid": 1, "first_name": 1, "last_name": 1, "phone": 1})
+        doctor = await db.doctor_profiles.find_one({"id": c["assigned_doctor_id"]}, {"_id": 0, "display_name": 1})
+        rows.append({
+            **c,
+            "patient_uid": (patient or {}).get("patient_uid"),
+            "patient_name": f"{(patient or {}).get('first_name', '')} {(patient or {}).get('last_name', '')}".strip(),
+            "patient_phone": (patient or {}).get("phone"),
+            "doctor": (doctor or {}).get("display_name"),
+        })
+    await audit(user, "EXPORT", "Case", "csv", {"rows": len(rows)})
+    return _csv_response(
+        rows,
+        ["case_uid", "patient_uid", "patient_name", "patient_phone", "doctor", "complaint_text", "status",
+         "next_followup_at", "created_at", "consultation_started_at", "consultation_completed_at",
+         "sent_to_pharmacy_at", "ready_for_billing_at", "closed_at"],
+        "sparsa-cases.csv",
+    )
+
+
+@api.get("/admin/export/payments.csv")
+async def export_payments(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OWNER_DOCTOR))):
+    pays = await db.payments.find({}, {"_id": 0}).to_list(100000)
+    rows = []
+    for p in pays:
+        c = await db.cases.find_one({"id": p["case_id"]}, {"_id": 0, "case_uid": 1, "patient_id": 1, "assigned_doctor_id": 1})
+        patient = await db.patients.find_one({"id": (c or {}).get("patient_id")}, {"_id": 0, "patient_uid": 1, "first_name": 1, "last_name": 1})
+        doctor = await db.doctor_profiles.find_one({"id": (c or {}).get("assigned_doctor_id")}, {"_id": 0, "display_name": 1})
+        rows.append({
+            **p,
+            "case_uid": (c or {}).get("case_uid"),
+            "patient_uid": (patient or {}).get("patient_uid"),
+            "patient_name": f"{(patient or {}).get('first_name', '')} {(patient or {}).get('last_name', '')}".strip(),
+            "doctor": (doctor or {}).get("display_name"),
+        })
+    await audit(user, "EXPORT", "Payment", "csv", {"rows": len(rows)})
+    return _csv_response(
+        rows,
+        ["receipt_no", "case_uid", "patient_uid", "patient_name", "doctor", "consultation_amount",
+         "medicine_amount", "total_amount", "amount_paid", "balance_amount", "payment_status",
+         "payment_mode", "medicines_taken", "created_at", "updated_at"],
+        "sparsa-payments.csv",
+    )
+
+
+@api.get("/admin/export/prescriptions.csv")
+async def export_prescriptions(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OWNER_DOCTOR))):
+    rx = await db.prescriptions.find({}, {"_id": 0}).to_list(100000)
+    rows = []
+    for p in rx:
+        c = await db.cases.find_one({"id": p["case_id"]}, {"_id": 0, "case_uid": 1, "patient_id": 1})
+        patient = await db.patients.find_one({"id": (c or {}).get("patient_id")}, {"_id": 0, "patient_uid": 1})
+        for item in (p.get("items") or []):
+            rows.append({
+                "case_uid": (c or {}).get("case_uid"),
+                "patient_uid": (patient or {}).get("patient_uid"),
+                "version_no": p.get("version_no"),
+                "edited_by_pharmacy": p.get("edited_by_pharmacy", False),
+                "created_at": p.get("created_at"),
+                **item,
+            })
+    await audit(user, "EXPORT", "Prescription", "csv", {"rows": len(rows)})
+    return _csv_response(
+        rows,
+        ["case_uid", "patient_uid", "version_no", "edited_by_pharmacy", "medicine_name",
+         "potency", "dosage", "frequency", "duration_days", "instructions", "created_at"],
+        "sparsa-prescriptions.csv",
+    )
+
+
+@api.get("/admin/export/audit.csv")
+async def export_audit(user: dict = Depends(require_roles(ROLE_ADMIN))):
+    rows = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(50000).to_list(50000)
+    flat = [{**r, "metadata": str(r.get("metadata") or "")} for r in rows]
+    await audit(user, "EXPORT", "AuditLog", "csv", {"rows": len(flat)})
+    return _csv_response(
+        flat,
+        ["created_at", "actor_username", "actor_role", "action", "entity_type", "entity_id", "metadata"],
+        "sparsa-audit.csv",
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -824,6 +1127,11 @@ async def seed():
 @app.on_event("startup")
 async def on_startup():
     await seed()
+    try:
+        init_storage()
+    except Exception as e:
+        logging.warning(f"Storage init at startup failed: {e}")
+    asyncio.create_task(reminder_scheduler())
 
 
 # Mount router

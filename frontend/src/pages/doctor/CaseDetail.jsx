@@ -3,8 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
 import StatusBadge from "@/components/StatusBadge";
 import { ArrowLeft, Loader2, Sparkles, Save, ArrowRight, Plus, Trash2, X } from "lucide-react";
+import AttachmentsTab from "@/components/AttachmentsTab";
 
-const TABS = ["Notes", "Prescription", "Follow-up", "AI Assist"];
+const TABS = ["Notes", "Prescription", "Attachments", "Follow-up", "AI Assist"];
 
 export default function CaseDetail() {
   const { id } = useParams();
@@ -87,6 +88,7 @@ export default function CaseDetail() {
 
       {tab === "Notes" && <NotesTab caseId={c.id} initial={data.clinical_notes} onSaved={reload} />}
       {tab === "Prescription" && <PrescriptionTab caseId={c.id} latest={data.latest_prescription} onSaved={reload} />}
+      {tab === "Attachments" && <AttachmentsTab caseId={c.id} />}
       {tab === "Follow-up" && <FollowupTab caseData={c} onSaved={reload} />}
       {tab === "AI Assist" && <AiTab caseId={c.id} />}
     </div>
