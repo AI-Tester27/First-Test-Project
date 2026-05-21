@@ -3,62 +3,71 @@
 ## Original Problem Statement
 Internal clinic management web app for **Sparsa Homeoclinic** (homeopathy clinic, 5 PCs on LAN).
 Workflow: **Reception → Doctor → Pharmacy → PRO/Billing**.
-- Reception creates patient + case, assigns to Dr. Jyothi Vani or Dr. Hemanth.
-- Doctor adds diagnosis, sensitivity, prescription (medicine, potency, dosage, frequency, duration), suggestions, follow-up.
-- Pharmacy can **edit** prescriptions (versioned) and record dispense.
-- PRO/Billing collects payment (full/half/custom; cash/PhonePe/card/other) and prints **EN + Telugu** receipt.
-- **Dr. Jyothi Vani** (Owner/Lead) sees ALL cases incl. Dr. Hemanth's; **Dr. Hemanth** sees only his own.
-- New **ADMIN** role with complete access (users, data, audit, stats).
-- AI assist for doctors (summarize complaint, draft advice, prescription instructions) using **Claude Sonnet 4.5** via Emergent LLM key.
+Roles: ADMIN (full access), OWNER_DOCTOR (Jyothi — all cases), DOCTOR (Hemanth — own only), RECEPTION, PHARMACY, PRO.
 
 ## Stack (adapted)
 React + FastAPI + MongoDB (original spec was Laravel + MySQL).
 
-## User Personas / Roles
-| Role | User | Access |
-|---|---|---|
-| ADMIN | admin1 | Full read across data; exclusive: user CRUD, audit log, stats |
-| OWNER_DOCTOR | jyothi | All cases including Hemanth's, all doctor actions |
-| DOCTOR | hemanth | Only his own assigned cases |
-| RECEPTION | reception1 | Create/search patients + cases, view limited fields |
-| PHARMACY | pharmacy1 | Dispense + edit prescriptions (creates new version) |
-| PRO | pro1 | Billing, payments, print receipt |
+## What's Implemented
 
-## What's Implemented (v1 — 2026-02-21)
+### v1 — 2026-02-21
 - JWT (httpOnly cookie) auth + bcrypt; 6 seeded users.
-- Patients: auto-generated `SPARSA-XXXXXX` uid, search by name/phone/uid.
-- Cases: workflow status engine (WAITING_FOR_DOCTOR → IN_CONSULTATION → SENT_TO_PHARMACY → IN_PHARMACY → READY_FOR_BILLING → PAYMENT_PENDING/PARTIALLY_PAID → CLOSED).
-- Clinical notes (one per case, upsert).
-- Prescription versioning — pharmacy edits create a new version with `edited_by_pharmacy=true`.
-- Pharmacy dispense → auto-moves case to READY_FOR_BILLING.
-- Billing — total = consultation + medicine; PAID/PARTIAL/UNPAID; receipt `SPH-RC-XXXXXX`.
-- Follow-up + on-screen reminders.
-- AI assist (3 actions) via Claude Sonnet 4.5 / Emergent Universal Key.
-- Admin: user management, audit log viewer, stats (by status, by doctor, revenue).
-- Bilingual EN+Telugu printable receipt (uses `window.print()`).
-- 33/33 backend tests pass (auth, RBAC, full workflow, AI, admin).
+- Patients: auto-generated `SPARSA-XXXXXX` uid, search.
+- Cases: full workflow status engine.
+- Clinical notes + versioned prescriptions (pharmacy can edit → new version).
+- Pharmacy dispense → auto READY_FOR_BILLING.
+- Billing + bilingual EN+Telugu printable receipt (`SPH-RC-XXXXXX`).
+- On-screen follow-up reminders.
+- AI assist (3 actions, Claude Sonnet 4.5 via Emergent LLM key).
+- Admin: user mgmt, audit log, stats.
+- ✅ 33/33 backend tests pass.
 
-## Tech Notes
-- Backend: `/app/backend/server.py` (single file ~830 lines; routers split candidate for future).
-- Frontend: `/app/frontend/src/{App.js, pages/{reception,doctor,pharmacy,pro,admin}, contexts/AuthContext.jsx, components/{AppLayout,StatusBadge,RequireAuth}.jsx}`.
-- Design: teal accent, Work Sans + IBM Plex Sans, flat 1px borders, status pills.
-- Audit log entries written on every CREATE / UPDATE / STATUS_CHANGE / PAYMENT_UPDATE / LOGIN / AI_USED / PRESCRIPTION_EDIT.
+### v2 — 2026-02-21 (same day, extended)
+- **File attachments** via Emergent Object Storage — jpg/png/pdf, max 10MB. Soft-delete pattern, RBAC-gated download. New "Attachments" tab in Doctor case detail.
+- **Patient visit timeline** — full history (cases + notes + prescriptions + payments + attachments count). New page at `/reception/patients/:id/timeline`.
+- **5 CSV exports** for admin — patients, cases, payments, prescriptions, audit log. New Admin Exports page.
+- **WhatsApp + SMS reminders** — full Twilio + Meta WhatsApp Cloud API integration with graceful `PROVIDER_NOT_CONFIGURED` fallback. Background scheduler runs every 60s. Bilingual EN/Telugu reminder body. *(keys to be added in backend/.env when ready — see env keys below)*
+- **Daily mongodump backup script** at `/app/scripts/backup.sh` (+ restore.sh + README).
+- ✅ 53/53 backend tests pass (20 new + 33 regression).
 
-## Backlog (P0 / P1 / P2)
-### P1 — Useful but deferred
-- File attachments (jpg/png/pdf, 10MB) via Emergent object storage.
-- WhatsApp/SMS reminders (Twilio + WhatsApp Cloud API) — currently on-screen only.
-- Brute-force lockout on /api/auth/login (5 failed = 15min lockout).
-- Split server.py into routers (auth/patients/cases/pharmacy/payments/ai/admin) + seed.py.
+## How to enable WhatsApp + SMS reminders
+Add to `/app/backend/.env` and restart backend:
+```
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_ACCESS_TOKEN=...
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_FROM=+1...
+```
+- Get WhatsApp keys: https://developers.facebook.com/apps → WhatsApp → API Setup
+- Get Twilio keys: https://console.twilio.com
 
-### P2 — Nice to have
-- CSV export of patients / cases / payments.
-- Patient visit timeline (multi-visit history with old prescriptions).
-- Editable message templates (admin UI) for reminder text.
-- Multi-version prescription comparison view for doctor approval after pharmacy edit.
-- Daily backup script (mongodump) + restore docs for clinic IT.
+When configured, the scheduler will try WhatsApp first, fall back to SMS, and mark reminders SENT/FAILED.
+
+## Endpoints (new in v2)
+- `POST /api/cases/{id}/attachments` (multipart)
+- `GET  /api/cases/{id}/attachments`
+- `GET  /api/attachments/{id}/download`
+- `DELETE /api/attachments/{id}`
+- `GET  /api/patients/{id}/timeline`
+- `GET  /api/admin/export/{patients|cases|payments|prescriptions|audit}.csv`
+- `POST /api/reminders/{id}/send-now`
+- `GET  /api/health` now includes provider status
+
+## Backlog
+### P1
+- Brute-force lockout on `/api/auth/login` (5 failed = 15min).
+- Split server.py into routers (auth/patients/cases/pharmacy/payments/ai/admin/attachments/exports) — currently 1154 lines.
+- Switch `requests` to `httpx.AsyncClient` in messaging.py to avoid blocking the event loop once real keys are configured.
+- Patient timeline: replace N+1 reads with `$lookup` aggregation.
+
+### P2
+- Hard-delete reaper for orphaned object storage files (currently soft-delete only).
+- Streaming CSV cursor for very large exports (currently loads up to 100k rows in memory).
+- Configurable reminder templates (admin UI) + bilingual variants.
+- Multi-visit timeline filtering & analytics.
 
 ## Next Action Items
-- Confirm receipt language quality with native Telugu speaker before clinic rollout.
-- Wire Twilio + WhatsApp Cloud API keys when clinic is ready for SMS reminders.
-- Add file attachments (Emergent object storage) if lab reports/images are needed.
+- Add Twilio + WhatsApp Cloud API keys to backend/.env when ready.
+- Test the daily backup script with cron / Task Scheduler on the actual clinic PC.
+- Consider splitting server.py into routers before further growth.
