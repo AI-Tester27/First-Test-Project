@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
 import StatusBadge, { PaymentBadge } from "@/components/StatusBadge";
-import { ArrowLeft, Loader2, FileText, Pill, ReceiptText, Paperclip, Calendar } from "lucide-react";
+import { ArrowLeft, Loader2, FileText, Pill, ReceiptText, Paperclip, Calendar, Sparkles, X } from "lucide-react";
 
 export default function PatientTimeline() {
   const { id } = useParams();
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [recap, setRecap] = useState(null);
+  const [recapBusy, setRecapBusy] = useState(false);
+  const [recapErr, setRecapErr] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -15,6 +18,15 @@ export default function PatientTimeline() {
       catch (e) { setErr(fmtErr(e)); }
     })();
   }, [id]);
+
+  const runRecap = async () => {
+    setRecapBusy(true); setRecapErr(""); setRecap(null);
+    try {
+      const { data } = await api.post(`/patients/${id}/ai/recap`);
+      setRecap(data);
+    } catch (e) { setRecapErr(fmtErr(e)); }
+    finally { setRecapBusy(false); }
+  };
 
   if (err) return <div className="p-8 text-red-700">{err}</div>;
   if (!data) return <div className="p-8 grid place-items-center text-gray-400"><Loader2 className="animate-spin" /></div>;
@@ -35,11 +47,39 @@ export default function PatientTimeline() {
         {p.address && <div className="text-sm text-gray-500 mt-1">{p.address}</div>}
       </div>
 
-      <div className="flex items-center gap-2 mb-4">
-        <Calendar size={15} strokeWidth={1.5} className="text-gray-500" />
-        <h2 className="font-display text-base font-semibold text-gray-900">Visit history</h2>
-        <span className="text-xs text-gray-500 tabular-nums ml-1">({data.timeline.length})</span>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2">
+          <Calendar size={15} strokeWidth={1.5} className="text-gray-500" />
+          <h2 className="font-display text-base font-semibold text-gray-900">Visit history</h2>
+          <span className="text-xs text-gray-500 tabular-nums ml-1">({data.timeline.length})</span>
+        </div>
+        {data.timeline.length > 0 && (
+          <button
+            onClick={runRecap}
+            disabled={recapBusy}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-teal-700 to-teal-600 hover:from-teal-800 hover:to-teal-700 disabled:opacity-60 text-white rounded-md text-sm font-medium shadow-sm"
+            data-testid="ai-recap-btn"
+          >
+            {recapBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={1.5} />}
+            AI Visit Recap
+          </button>
+        )}
       </div>
+
+      {(recap || recapErr || recapBusy) && (
+        <div className="bg-gradient-to-br from-teal-50/80 to-white border border-teal-200 rounded-md p-5 mb-5 relative" data-testid="recap-card">
+          <button onClick={() => { setRecap(null); setRecapErr(""); }} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700"><X size={14} /></button>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles size={14} strokeWidth={1.5} className="text-teal-700" />
+            <div className="text-xs uppercase tracking-wider font-semibold text-teal-800">
+              5-line AI briefing {recap?.visits_analysed ? <span className="text-gray-500 tabular-nums">· {recap.visits_analysed} visits analysed</span> : null}
+            </div>
+          </div>
+          {recapBusy && <div className="text-sm text-gray-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Reading visit history…</div>}
+          {recapErr && <div className="text-sm text-red-700">{recapErr}</div>}
+          {recap?.result && <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed" data-testid="recap-result">{recap.result}</div>}
+        </div>
+      )}
 
       {data.timeline.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-md p-12 text-center text-sm text-gray-400">No visits yet.</div>
