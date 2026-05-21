@@ -78,9 +78,11 @@ async def ai_assist(
 
     try:
         result = await _call_llm(system, user_text, f"case-{action}")
+    except HTTPException:
+        raise
     except Exception as e:
         log.exception("AI error")
-        raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI service error: {e}") from e
 
     await audit(user, "AI_USED", "Case", case_id, {"action": action})
     return {"action": action, "result": result}
@@ -139,9 +141,11 @@ async def ai_visit_recap(
     )
     try:
         result = await _call_llm(system, narrative, f"recap-{patient_id}")
+    except HTTPException:
+        raise
     except Exception as e:
         log.exception("AI recap error")
-        raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI service error: {e}") from e
 
     await audit(user, "AI_USED", "Patient", patient_id, {"action": "recap", "visits": len(cases)})
     return {"result": result, "visits_analysed": len(cases)}

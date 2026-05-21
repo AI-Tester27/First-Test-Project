@@ -69,7 +69,7 @@ async def download_attachment(attachment_id: str, user: dict = Depends(get_curre
     try:
         data, ctype = get_object(rec["storage_path"])
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Storage error: {e}")
+        raise HTTPException(status_code=503, detail=f"Storage error: {e}") from e
     await audit(user, "ATTACHMENT_DOWNLOAD", "Attachment", attachment_id)
     return Response(
         content=data,

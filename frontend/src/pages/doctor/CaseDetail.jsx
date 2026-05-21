@@ -157,7 +157,7 @@ function PrescriptionTab({ caseId, latest, onSaved }) {
       await api.post(`/cases/${caseId}/prescription`, {
         items: items
           .filter((it) => it.medicine_name)
-          .map((it) => ({ ...it, duration_days: it.duration_days ? Number(it.duration_days) : null })),
+          .map(({ _key, ...it }) => ({ ...it, duration_days: it.duration_days ? Number(it.duration_days) : null })),
         notes_for_patient: notesForPatient,
       });
       setMsg("New prescription version saved.");
@@ -171,7 +171,7 @@ function PrescriptionTab({ caseId, latest, onSaved }) {
       {latest && <div className="text-xs text-gray-500">Current version: <span className="tabular-nums font-medium text-gray-700">v{latest.version_no}</span></div>}
       <div className="space-y-3">
         {items.map((it, i) => (
-          <div key={i} className="grid grid-cols-12 gap-2 items-start border border-gray-200 rounded-md p-3" data-testid={`rx-item-${i}`}>
+          <div key={it._key} className="grid grid-cols-12 gap-2 items-start border border-gray-200 rounded-md p-3" data-testid={`rx-item-${i}`}>
             <input className="input col-span-3" placeholder="Medicine" value={it.medicine_name} onChange={(e) => update(i, "medicine_name", e.target.value)} />
             <input className="input col-span-2" placeholder="Potency (e.g. 30C)" value={it.potency} onChange={(e) => update(i, "potency", e.target.value)} />
             <input className="input col-span-2" placeholder="Dosage" value={it.dosage} onChange={(e) => update(i, "dosage", e.target.value)} />
@@ -183,7 +183,7 @@ function PrescriptionTab({ caseId, latest, onSaved }) {
             <textarea rows={1} className="input col-span-12 mt-1" placeholder="Instructions (optional)" value={it.instructions} onChange={(e) => update(i, "instructions", e.target.value)} />
           </div>
         ))}
-        <button onClick={() => setItems([...items, { ...EMPTY_ITEM }])} className="inline-flex items-center gap-1 text-sm text-teal-700 hover:text-teal-800 font-medium" data-testid="add-rx-item-btn">
+        <button onClick={() => setItems([...items, withKey({ ...EMPTY_ITEM })])} className="inline-flex items-center gap-1 text-sm text-teal-700 hover:text-teal-800 font-medium" data-testid="add-rx-item-btn">
           <Plus size={14} /> Add medicine
         </button>
       </div>

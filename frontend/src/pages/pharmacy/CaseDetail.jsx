@@ -5,6 +5,7 @@ import StatusBadge from "@/components/StatusBadge";
 import { ArrowLeft, Save, Loader2, Plus, Trash2, ArrowRight } from "lucide-react";
 
 const EMPTY_ITEM = { medicine_name: "", potency: "", dosage: "", frequency: "", duration_days: "", instructions: "" };
+const withKey = (it) => ({ ...it, _key: it._key || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`) });
 
 export default function PharmacyCase() {
   const { id } = useParams();
@@ -20,7 +21,7 @@ export default function PharmacyCase() {
     try {
       const { data } = await api.get(`/cases/${id}`);
       setData(data);
-      setItems(data.latest_prescription?.items?.length ? data.latest_prescription.items : [{ ...EMPTY_ITEM }]);
+      setItems(data.latest_prescription?.items?.length ? data.latest_prescription.items.map(withKey) : [withKey({ ...EMPTY_ITEM })]);
       if (data.pharmacy_dispense) setDispense(data.pharmacy_dispense);
     } catch (e) { setErr(fmtErr(e)); }
   };
@@ -37,7 +38,7 @@ export default function PharmacyCase() {
     setBusy(true); setMsg("");
     try {
       await api.post(`/cases/${c.id}/prescription`, {
-        items: items.filter((it) => it.medicine_name).map((it) => ({ ...it, duration_days: it.duration_days ? Number(it.duration_days) : null })),
+        items: items.filter((it) => it.medicine_name).map(({ _key, ...it }) => ({ ...it, duration_days: it.duration_days ? Number(it.duration_days) : null })),
         notes_for_patient: data.latest_prescription?.notes_for_patient || "",
       });
       setMsg("New prescription version saved.");
@@ -78,7 +79,7 @@ export default function PharmacyCase() {
         </div>
         <div className="space-y-3">
           {items.map((it, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-start border border-gray-200 rounded-md p-3">
+            <div key={it._key} className="grid grid-cols-12 gap-2 items-start border border-gray-200 rounded-md p-3">
               <input className="input col-span-3" placeholder="Medicine" value={it.medicine_name} onChange={(e) => update(i, "medicine_name", e.target.value)} />
               <input className="input col-span-2" placeholder="Potency" value={it.potency || ""} onChange={(e) => update(i, "potency", e.target.value)} />
               <input className="input col-span-2" placeholder="Dosage" value={it.dosage || ""} onChange={(e) => update(i, "dosage", e.target.value)} />
@@ -87,7 +88,7 @@ export default function PharmacyCase() {
               <button onClick={() => setItems(items.filter((_, j) => j !== i))} className="col-span-1 text-gray-400 hover:text-red-600 py-2 grid place-items-center"><Trash2 size={14} /></button>
             </div>
           ))}
-          <button onClick={() => setItems([...items, { ...EMPTY_ITEM }])} className="inline-flex items-center gap-1 text-sm text-teal-700 hover:text-teal-800 font-medium"><Plus size={14} /> Add medicine</button>
+          <button onClick={() => setItems([...items, withKey({ ...EMPTY_ITEM })])} className="inline-flex items-center gap-1 text-sm text-teal-700 hover:text-teal-800 font-medium"><Plus size={14} /> Add medicine</button>
         </div>
         <button onClick={savePrescription} disabled={busy} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-teal-600 text-gray-900 rounded-md text-sm font-medium disabled:opacity-60" data-testid="pharmacy-save-rx-btn">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save prescription edit
