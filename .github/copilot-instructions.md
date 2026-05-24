@@ -1,3 +1,4 @@
+
 # Copilot Instructions for Sparsa Homeoclinic
 
 ## Quick Start: Build, Test, Lint
