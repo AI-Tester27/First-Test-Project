@@ -149,3 +149,77 @@ async def ai_visit_recap(
 
     await audit(user, "AI_USED", "Patient", patient_id, {"action": "recap", "visits": len(cases)})
     return {"result": result, "visits_analysed": len(cases)}
+
+
+@router.post("/ai/parse-visit-notes")
+async def parse_visit_notes(
+    payload: ParseNotesIn,
+    user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN)),
+):
+    """Parse free-form clinical notes (e.g. pasted from Google Docs) into a structured
+    historical-visit draft. Doctor reviews the draft before saving.
+    """
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    if len(text) > 8000:
+        raise HTTPException(status_code=413, detail="Notes too long (max 8000 chars)")
+
+    system = (
+        "You are a homeopathy clinic data-extraction assistant. The user pastes free-form "
+        "doctor notes from Google Docs or a notebook. Extract a single visit's structured data. "
+        "Output ONLY valid minified JSON (no prose, no markdown fences) with EXACTLY these keys:\n"
+        '  {"visit_date": "YYYY-MM-DD" or null,\n'
+        '   "complaint_text": str,\n'
+        '   "diagnosis_summary": str,\n'
+        '   "sensitivity_allergies": str,\n'
+        '   "suggestions": str,\n'
+        '   "additional_info": str,\n'
+        '   "prescription_items": [{"medicine_name": str, "potency": str, "dosage": str,\n'
+        '                           "frequency": str, "duration_days": int or null,\n'
+        '                           "instructions": str}],\n'
+        '   "notes_for_patient": str,\n'
+        '   "consultation_amount": number or null,\n'
+        '   "medicine_amount": number or null,\n'
+        '   "amount_paid": number or null,\n'
+        '   "payment_mode": "CASH"|"PHONEPE"|"CARD"|"OTHER"|null}\n'
+        "Rules: (a) use empty string '' for missing strings, empty list for missing list, null for missing numbers/dates. "
+        "(b) Do NOT invent medicines or diagnoses. Leave empty if unclear. "
+        "(c) For potency normalize to formats like '30C', '200C', '1M', 'Q', '6X'. "
+        "(d) For duration parse 'one week'=7, 'fortnight'=14, '10d'=10. "
+        "(e) Currency symbols like ₹, Rs, rupees should be stripped. "
+        "(f) Dates may appear as DD/MM/YYYY, DD-MM-YY, '14 Jan 2024' etc — output ISO YYYY-MM-DD."
+    )
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=os.environ["EMERGENT_LLM_KEY"],
+            session_id=f"parse-{uuid.uuid4()}",
+            system_message=system,
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        raw = await chat.send_message(UserMessage(text=text))
+    except Exception as e:
+        log.exception("Notes parse error")
+        raise HTTPException(status_code=502, detail=f"AI service error: {e}") from e
+
+    # Strip any accidental code fences and find the JSON object
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(?:json)?", "", cleaned).strip()
+    cleaned = re.sub(r"```$", "", cleaned).strip()
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=502, detail="AI returned no JSON object")
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=502, detail=f"AI returned invalid JSON: {e}") from e
+
+    # Light normalization / defaults
+    parsed.setdefault("prescription_items", [])
+    for k in ("complaint_text", "diagnosis_summary", "sensitivity_allergies",
+              "suggestions", "additional_info", "notes_for_patient"):
+        parsed.setdefault(k, "")
+
+    await audit(user, "AI_USED", "Notes", "parse", {"chars": len(text), "items": len(parsed.get("prescription_items", []))})
+    return {"draft": parsed, "raw": raw}

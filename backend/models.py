@@ -85,3 +85,28 @@ class UserUpdateIn(BaseModel):
     role: Optional[str] = None
     active: Optional[bool] = None
     password: Optional[str] = None
+
+
+class PastVisitIn(BaseModel):
+    """Historical visit entry — creates a backdated CLOSED case."""
+    visit_date: datetime
+    assigned_doctor_id: str
+    complaint_text: str
+    diagnosis_summary: Optional[str] = ""
+    sensitivity_allergies: Optional[str] = ""
+    safety_notes: Optional[str] = ""
+    suggestions: Optional[str] = ""
+    additional_info: Optional[str] = ""
+    prescription_items: List[PrescriptionItemIn] = []
+    notes_for_patient: Optional[str] = ""
+    consultation_amount: float = 0
+    medicine_amount: float = 0
+    medicines_taken: bool = False
+    amount_paid: float = 0
+    payment_mode: Optional[Literal["CASH", "PHONEPE", "CARD", "OTHER"]] = None
+
+
+class ParseNotesIn(BaseModel):
+    """Paste from Google Docs / paper transcripts."""
+    text: str
+    hint_doctor_id: Optional[str] = None
