@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
 import StatusBadge, { PaymentBadge } from "@/components/StatusBadge";
-import { ArrowLeft, Loader2, Save, Printer } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Printer, CheckCircle2, User, ListChecks } from "lucide-react";
 
 export default function BillingDetail() {
   const { id } = useParams();
@@ -48,6 +48,7 @@ export default function BillingDetail() {
   const c = data.case;
   const total = Number(form.consultation_amount || 0) + (form.medicines_taken ? Number(form.medicine_amount || 0) : 0);
   const balance = Math.max(0, total - Number(form.amount_paid || 0));
+  const isClosed = c.status === "CLOSED" && data.payment?.payment_status === "PAID";
 
   const save = async () => {
     setBusy(true); setMsg("");
@@ -80,10 +81,56 @@ export default function BillingDetail() {
         </div>
       </div>
 
+      {isClosed && (
+        <div className="bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-200 rounded-md p-6 mb-6" data-testid="payment-success-card">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center shrink-0">
+              <CheckCircle2 size={24} strokeWidth={1.75} />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-display text-xl font-semibold text-emerald-900 tracking-tight">Payment received · Case closed</h2>
+              <p className="text-sm text-emerald-800 mt-1">
+                Receipt <span className="font-mono font-semibold tabular-nums">{data.payment.receipt_no}</span> · ₹{Number(data.payment.amount_paid).toFixed(0)} via <span className="font-medium">{data.payment.payment_mode || "—"}</span>.
+                The case is now in the closed archive.
+              </p>
+              <div className="grid grid-cols-3 gap-3 mt-4 text-xs">
+                <div className="bg-white border border-emerald-100 rounded p-2.5">
+                  <div className="text-emerald-700 uppercase tracking-wider font-semibold text-[10px] mb-0.5">Consultation</div>
+                  <div className="tabular-nums font-semibold text-gray-900">₹{Number(data.payment.consultation_amount).toFixed(2)}</div>
+                </div>
+                <div className="bg-white border border-emerald-100 rounded p-2.5">
+                  <div className="text-emerald-700 uppercase tracking-wider font-semibold text-[10px] mb-0.5">Medicines</div>
+                  <div className="tabular-nums font-semibold text-gray-900">₹{Number(data.payment.medicine_amount).toFixed(2)}</div>
+                </div>
+                <div className="bg-white border border-emerald-100 rounded p-2.5">
+                  <div className="text-emerald-700 uppercase tracking-wider font-semibold text-[10px] mb-0.5">Total</div>
+                  <div className="tabular-nums font-semibold text-gray-900">₹{Number(data.payment.total_amount).toFixed(2)}</div>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-5">
+                <Link to={`/pro/cases/${c.id}/receipt`} target="_blank" className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-md text-sm font-medium" data-testid="success-print-btn">
+                  <Printer size={14} strokeWidth={1.5} /> Print receipt
+                </Link>
+                {c.patient?.id && (
+                  <Link to={`/reception/patients/${c.patient.id}/timeline`} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-emerald-600 rounded-md text-sm font-medium" data-testid="success-timeline-btn">
+                    <User size={14} strokeWidth={1.5} /> Patient timeline
+                  </Link>
+                )}
+                <Link to="/pro" className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-emerald-600 rounded-md text-sm font-medium" data-testid="success-queue-btn">
+                  <ListChecks size={14} strokeWidth={1.5} /> Back to billing queue
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white border border-gray-200 rounded-md p-6">
-          <h2 className="font-display text-lg font-semibold text-gray-900 mb-4">Payment</h2>
-          <div className="space-y-4">
+        <div className={`col-span-2 bg-white border border-gray-200 rounded-md p-6 ${isClosed ? "opacity-75" : ""}`}>
+          <h2 className="font-display text-lg font-semibold text-gray-900 mb-4">
+            {isClosed ? "Payment summary (closed)" : "Payment"}
+          </h2>
+          <fieldset disabled={isClosed} className="space-y-4 disabled:cursor-not-allowed">
             <Field label="Consultation amount (₹)">
               <input type="number" className="input tabular-nums" value={form.consultation_amount} onChange={(e) => setForm({ ...form, consultation_amount: e.target.value })} data-testid="consult-amount" />
               <div className="flex gap-2 mt-2">
@@ -118,17 +165,17 @@ export default function BillingDetail() {
             </Field>
 
             <div className="flex items-center gap-3 pt-2">
-              <button onClick={save} disabled={busy} className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-sm font-medium disabled:opacity-60" data-testid="save-payment-btn">
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Record payment
+              <button onClick={save} disabled={busy || isClosed} className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-sm font-medium disabled:opacity-60" data-testid="save-payment-btn">
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {isClosed ? "Already recorded" : "Record payment"}
               </button>
-              {data.payment && (
+              {data.payment && !isClosed && (
                 <Link to={`/pro/cases/${c.id}/receipt`} target="_blank" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-teal-600 rounded-md text-sm font-medium" data-testid="print-receipt-btn">
                   <Printer size={14} /> Print receipt
                 </Link>
               )}
               {msg && <span className="text-sm text-gray-500">{msg}</span>}
             </div>
-          </div>
+          </fieldset>
         </div>
 
         <div className="col-span-1 bg-white border border-gray-200 rounded-md p-6 h-fit">

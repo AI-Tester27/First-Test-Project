@@ -11,6 +11,7 @@ import NewPatient from "@/pages/reception/NewPatient";
 import NewVisit from "@/pages/reception/NewVisit";
 import PatientsList from "@/pages/reception/PatientsList";
 import PatientTimeline from "@/pages/reception/PatientTimeline";
+import PastVisitForm from "@/pages/reception/PastVisitForm";
 
 import DoctorDashboard from "@/pages/doctor/Dashboard";
 import DoctorCaseDetail from "@/pages/doctor/CaseDetail";
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/reception" element={<RequireAuth roles={RECEPTION_ROLES}><ReceptionDashboard /></RequireAuth>} />
               <Route path="/reception/patients" element={<RequireAuth roles={RECEPTION_ROLES}><PatientsList /></RequireAuth>} />
               <Route path="/reception/patients/:id/timeline" element={<RequireAuth><PatientTimeline /></RequireAuth>} />
+              <Route path="/reception/patients/:id/past-visit" element={<RequireAuth roles={RECEPTION_ROLES}><PastVisitForm /></RequireAuth>} />
               <Route path="/reception/patients/new" element={<RequireAuth roles={RECEPTION_ROLES}><NewPatient /></RequireAuth>} />
               <Route path="/reception/new-visit" element={<RequireAuth roles={RECEPTION_ROLES}><NewVisit /></RequireAuth>} />
 

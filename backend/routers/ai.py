@@ -1,5 +1,7 @@
-"""AI assist endpoints: per-case (summarize / advice / instructions) and per-patient (recap)."""
+"""AI assist endpoints: per-case, per-patient (recap), and notes parsing."""
 import os
+import json
+import re
 import uuid
 import logging
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,8 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from core import (
     db, audit,
     get_current_user, require_roles, load_case_for_user,
-    ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_ADMIN,
+    ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN,
 )
+from models import ParseNotesIn
 
 router = APIRouter()
 log = logging.getLogger(__name__)

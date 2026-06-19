@@ -40,7 +40,7 @@ export default function ReceptionDashboard() {
       <div className="flex items-end justify-between mb-8">
         <div>
           <div className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-1">Reception</div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight text-gray-900">Today's Queue</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-gray-900">Today&apos;s Queue</h1>
         </div>
         <div className="flex gap-2">
           <Link to="/reception/patients/new" className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-md text-sm font-medium hover:border-teal-600" data-testid="new-patient-btn">

@@ -138,9 +138,15 @@ function NotesTab({ caseId, initial, onSaved }) {
 }
 
 const EMPTY_ITEM = { medicine_name: "", potency: "", dosage: "", frequency: "", duration_days: "", instructions: "" };
+const withKey = (it) => ({
+  ...it,
+  _key: it._key || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
+});
 
 function PrescriptionTab({ caseId, latest, onSaved }) {
-  const [items, setItems] = useState(latest?.items?.length ? latest.items : [{ ...EMPTY_ITEM }]);
+  const [items, setItems] = useState(
+    latest?.items?.length ? latest.items.map(withKey) : [withKey({ ...EMPTY_ITEM })]
+  );
   const [notesForPatient, setNotesForPatient] = useState(latest?.notes_for_patient || "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");

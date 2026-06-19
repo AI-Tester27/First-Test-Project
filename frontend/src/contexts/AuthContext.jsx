@@ -14,7 +14,6 @@ export function AuthProvider({ children }) {
     } catch (error) {
       if (error?.response?.status !== 401) {
         // Only log unexpected failures; 401 just means "not signed in" which is normal.
-        // eslint-disable-next-line no-console
         console.error("Auth refresh failed:", error);
       }
       setUser(null);
@@ -37,7 +36,6 @@ export function AuthProvider({ children }) {
     try {
       await api.post("/auth/logout");
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("Logout request failed (clearing local session anyway):", error);
     }
     setUser(null);

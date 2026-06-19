@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
 import StatusBadge, { PaymentBadge } from "@/components/StatusBadge";
-import { ArrowLeft, Loader2, FileText, Pill, ReceiptText, Paperclip, Calendar, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Loader2, FileText, Pill, ReceiptText, Paperclip, Calendar, Sparkles, X, FilePlus } from "lucide-react";
 
 export default function PatientTimeline() {
   const { id } = useParams();
@@ -53,17 +53,26 @@ export default function PatientTimeline() {
           <h2 className="font-display text-base font-semibold text-gray-900">Visit history</h2>
           <span className="text-xs text-gray-500 tabular-nums ml-1">({data.timeline.length})</span>
         </div>
-        {data.timeline.length > 0 && (
-          <button
-            onClick={runRecap}
-            disabled={recapBusy}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-teal-700 to-teal-600 hover:from-teal-800 hover:to-teal-700 disabled:opacity-60 text-white rounded-md text-sm font-medium shadow-sm"
-            data-testid="ai-recap-btn"
+        <div className="flex gap-2">
+          <Link
+            to={`/reception/patients/${id}/past-visit`}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-teal-600 text-gray-900 rounded-md text-sm font-medium"
+            data-testid="add-past-visit-btn"
           >
-            {recapBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={1.5} />}
-            AI Visit Recap
-          </button>
-        )}
+            <FilePlus size={14} strokeWidth={1.5} /> Add past visit
+          </Link>
+          {data.timeline.length > 0 && (
+            <button
+              onClick={runRecap}
+              disabled={recapBusy}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-teal-700 to-teal-600 hover:from-teal-800 hover:to-teal-700 disabled:opacity-60 text-white rounded-md text-sm font-medium shadow-sm"
+              data-testid="ai-recap-btn"
+            >
+              {recapBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={1.5} />}
+              AI Visit Recap
+            </button>
+          )}
+        </div>
       </div>
 
       {(recap || recapErr || recapBusy) && (
