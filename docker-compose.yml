@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: sparsa_homeoclinic
+    ports:
+      - "27017:27017"
+
+  backend:
+    image: python:3.10-slim
+    restart: unless-stopped
+    working_dir: /app/backend
+    volumes:
+      - ./backend:/app/backend:delegated
+    command: bash -c "cd /app/backend && pip install -r requirements.txt && uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/sparsa_homeoclinic
+    depends_on:
+      - mongo
+
+  frontend:
+    image: node:16
+    restart: unless-stopped
+    working_dir: /app/frontend
+    volumes:
+      - ./frontend:/app/frontend:delegated
+      - /app/frontend/node_modules
+    command: bash -c "cd /app/frontend && yarn install --frozen-lockfile && yarn start"
+    ports:
+      - "3000:3000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
