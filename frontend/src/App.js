@@ -29,6 +29,7 @@ import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminUsers from "@/pages/admin/Users";
 import AdminAudit from "@/pages/admin/AuditLogs";
 import AdminExports from "@/pages/admin/Exports";
+import AdminMessagingSettings from "@/pages/admin/MessagingSettings";
 
 // Role guards — declared once at module scope so React doesn't see a new array
 // reference on every render (which would re-trigger RequireAuth memoization).
@@ -83,6 +84,7 @@ export default function App() {
               <Route path="/admin/users" element={<RequireAuth roles={ADMIN_ONLY}><AdminUsers /></RequireAuth>} />
               <Route path="/admin/audit" element={<RequireAuth roles={ADMIN_ONLY}><AdminAudit /></RequireAuth>} />
               <Route path="/admin/exports" element={<RequireAuth roles={ADMIN_ONLY}><AdminExports /></RequireAuth>} />
+              <Route path="/admin/messaging" element={<RequireAuth roles={ADMIN_ONLY}><AdminMessagingSettings /></RequireAuth>} />
               <Route path="/admin/cases" element={<RequireAuth roles={ADMIN_ONLY}><DoctorDashboard scope="all" /></RequireAuth>} />
             </Route>
 

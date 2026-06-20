@@ -11,7 +11,7 @@ from core import (
     ROLE_DOCTOR, ROLE_OWNER_DOCTOR, ROLE_PHARMACY, ROLE_ADMIN,
 )
 from models import ReminderCreateIn, ReminderUpdateIn
-from messaging import send_whatsapp, send_sms, provider_status
+from messaging import send_whatsapp, send_sms, provider_status, _maybe_refresh
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -182,6 +182,7 @@ async def reminder_scheduler():
     """Background task — every 60s, deliver any PENDING reminder whose scheduled_at has passed."""
     while True:
         try:
+            await _maybe_refresh(db)
             now_iso = now_utc().isoformat()
             cur = db.reminders.find({"status": "PENDING", "scheduled_at": {"$lte": now_iso}}).limit(20)
             async for r in cur:

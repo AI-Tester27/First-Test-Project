@@ -11,9 +11,9 @@ import logging
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
-from core import mongo_client, now_utc
+from core import mongo_client, now_utc, db
 from storage import init_storage
-from messaging import provider_status
+from messaging import provider_status, refresh_messaging_cache
 from seed import seed_all
 from routers import auth, patients, cases, pharmacy, payments, reminders, attachments, ai, exports, admin, dashboards
 from routers.reminders import reminder_scheduler
@@ -52,6 +52,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 @app.on_event("startup")
 async def on_startup():
     await seed_all()
+    try:
+        await refresh_messaging_cache(db)
+    except Exception as e:
+        logging.warning(f"Messaging cache refresh at startup failed: {e}")
     try:
         init_storage()
     except Exception as e:

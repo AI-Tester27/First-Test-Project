@@ -143,3 +143,13 @@ class ParseNotesIn(BaseModel):
     """Paste from Google Docs / paper transcripts."""
     text: str
     hint_doctor_id: Optional[str] = None
+
+
+class MessagingSettingsIn(BaseModel):
+    """Admin-managed runtime Twilio + WhatsApp credentials."""
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_ACCESS_TOKEN: Optional[str] = None
+    WHATSAPP_API_VERSION: Optional[str] = None
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_FROM: Optional[str] = None

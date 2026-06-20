@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ROLE_LABELS } from "@/lib/api";
 import {
   LayoutDashboard, Users, FileText, Pill, ReceiptText,
-  ShieldCheck, ClipboardList, LogOut, Leaf, FileDown,
+  ShieldCheck, ClipboardList, LogOut, Leaf, FileDown, MessageSquare,
 } from "lucide-react";
 
 const NAV_BY_ROLE = {
@@ -13,6 +13,7 @@ const NAV_BY_ROLE = {
     { to: "/admin/audit", label: "Audit Log", icon: ClipboardList },
     { to: "/admin/cases", label: "All Cases", icon: FileText },
     { to: "/admin/exports", label: "Exports", icon: FileDown },
+    { to: "/admin/messaging", label: "Messaging", icon: MessageSquare },
   ],
   OWNER_DOCTOR: [
     { to: "/doctor", label: "My Queue", icon: LayoutDashboard, end: true },

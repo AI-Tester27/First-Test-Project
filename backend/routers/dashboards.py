@@ -93,13 +93,24 @@ async def pro_dashboard(user: dict = Depends(require_roles(ROLE_PRO, ROLE_OWNER_
         ]).to_list(1)
         trend.append({"date": day_ist.strftime("%Y-%m-%d"), "label": day_ist.strftime("%a"), "revenue": agg[0]["total"] if agg else 0})
 
-    # Follow-ups due today
+    # Follow-ups due today (strip private clinician notes for non-clinician viewers)
     followups_today_pipeline = {
         "scheduled_at": {"$gte": start_iso, "$lt": end_iso},
         "status": {"$in": ["PENDING", "SENT"]},
     }
     followups_today = await db.reminders.count_documents(followups_today_pipeline)
-    followup_items = await db.reminders.find(followups_today_pipeline, {"_id": 0}).sort("scheduled_at", 1).limit(20).to_list(20)
+    raw_followups = await db.reminders.find(followups_today_pipeline, {"_id": 0}).sort("scheduled_at", 1).limit(20).to_list(20)
+    is_clinician = user["role"] in (ROLE_OWNER_DOCTOR, ROLE_ADMIN)
+    followup_items = []
+    for r in raw_followups:
+        if is_clinician:
+            followup_items.append(r)
+        else:
+            # PRO viewers see scheduling info but not private clinical notes
+            followup_items.append({
+                "id": r.get("id"), "patient_name": r.get("patient_name"), "patient_uid": r.get("patient_uid"),
+                "scheduled_at": r.get("scheduled_at"), "status": r.get("status"),
+            })
 
     return {
         "today_revenue": today_revenue,
@@ -119,65 +130,115 @@ async def pro_dashboard(user: dict = Depends(require_roles(ROLE_PRO, ROLE_OWNER_
 @router.get("/admin/analytics")
 async def admin_analytics(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OWNER_DOCTOR))):
     ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(ist).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_30 = (now_ist - timedelta(days=29)).astimezone(timezone.utc).isoformat()
+    end_30 = (now_ist + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+    cutoff_30 = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
-    # 30-day case trend
+    # 30-day case + revenue trend via two aggregations bucketed by IST date string.
+    # We bucket using a UTC->IST offset of +330 minutes then a $dateToString.
+    ist_date_expr = {
+        "$dateToString": {
+            "format": "%Y-%m-%d",
+            "date": {"$dateAdd": {
+                "startDate": {"$dateFromString": {"dateString": "$created_at"}},
+                "unit": "minute", "amount": 330,
+            }},
+        }
+    }
+    case_buckets = await db.cases.aggregate([
+        {"$match": {"created_at": {"$gte": start_30, "$lt": end_30}}},
+        {"$group": {"_id": ist_date_expr, "n": {"$sum": 1}}},
+    ]).to_list(60)
+    case_map = {b["_id"]: b["n"] for b in case_buckets if b["_id"]}
+
+    rev_ist_date_expr = {
+        "$dateToString": {
+            "format": "%Y-%m-%d",
+            "date": {"$dateAdd": {
+                "startDate": {"$dateFromString": {"dateString": "$updated_at"}},
+                "unit": "minute", "amount": 330,
+            }},
+        }
+    }
+    rev_buckets = await db.payments.aggregate([
+        {"$match": {"updated_at": {"$gte": start_30, "$lt": end_30}, "payment_status": "PAID"}},
+        {"$group": {"_id": rev_ist_date_expr, "total": {"$sum": "$amount_paid"}}},
+    ]).to_list(60)
+    rev_map = {b["_id"]: b["total"] for b in rev_buckets if b["_id"]}
+
     case_trend = []
     for i in range(29, -1, -1):
-        day_ist = datetime.now(ist).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=i)
-        s = day_ist.astimezone(timezone.utc).isoformat()
-        e = (day_ist + timedelta(days=1)).astimezone(timezone.utc).isoformat()
-        count = await db.cases.count_documents({"created_at": {"$gte": s, "$lt": e}})
-        rev_agg = await db.payments.aggregate([
-            {"$match": {"updated_at": {"$gte": s, "$lt": e}, "payment_status": "PAID"}},
-            {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}}},
-        ]).to_list(1)
+        day_ist = now_ist - timedelta(days=i)
+        key = day_ist.strftime("%Y-%m-%d")
         case_trend.append({
-            "date": day_ist.strftime("%Y-%m-%d"),
+            "date": key,
             "label": day_ist.strftime("%d %b"),
-            "cases": count,
-            "revenue": rev_agg[0]["total"] if rev_agg else 0,
+            "cases": case_map.get(key, 0),
+            "revenue": rev_map.get(key, 0),
         })
 
-    # By role login activity (last 30 days)
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    # Logins by role (last 30 days)
     login_pipeline = [
-        {"$match": {"action": "LOGIN", "created_at": {"$gte": cutoff}}},
+        {"$match": {"action": "LOGIN", "created_at": {"$gte": cutoff_30}}},
         {"$group": {"_id": "$actor_role", "count": {"$sum": 1}}},
     ]
     login_agg = await db.audit_logs.aggregate(login_pipeline).to_list(20)
     logins_by_role = {a["_id"]: a["count"] for a in login_agg if a["_id"]}
 
-    # Top complaints (very simple: take first 3 words of each complaint, count)
-    cases = await db.cases.find({}, {"_id": 0, "complaint_text": 1}).limit(5000).to_list(5000)
-    word_counts: dict[str, int] = {}
-    for c in cases:
-        words = (c.get("complaint_text") or "").lower().split()
-        for w in words:
-            w = w.strip(".,;:()[]\"'!? ").lstrip("-")
-            if len(w) >= 4 and w not in {"with", "from", "have", "been", "pain", "patient", "this", "that", "since", "very", "having"}:
-                word_counts[w] = word_counts.get(w, 0) + 1
-    top_complaints = sorted(word_counts.items(), key=lambda x: -x[1])[:10]
+    # Top complaint terms — tokenize in aggregation and group/count in Mongo.
+    STOP = {"with", "from", "have", "been", "pain", "patient", "this", "that",
+            "since", "very", "having", "and", "the", "for", "has", "but",
+            "are", "was", "were", "not", "she", "him", "her", "his"}
+    complaint_pipeline = [
+        {"$match": {"complaint_text": {"$exists": True, "$ne": ""}}},
+        {"$project": {
+            "_id": 0,
+            "tokens": {"$split": [{"$toLower": "$complaint_text"}, " "]},
+        }},
+        {"$unwind": "$tokens"},
+        {"$project": {
+            # Strip surrounding punctuation
+            "term": {"$trim": {"input": "$tokens", "chars": ".,;:()[]\"'!?-\t "}}
+        }},
+        {"$match": {
+            "term": {"$nin": list(STOP)},
+            "$expr": {"$gte": [{"$strLenCP": "$term"}, 4]},
+        }},
+        {"$group": {"_id": "$term", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ]
+    top_agg = await db.cases.aggregate(complaint_pipeline).to_list(10)
+    top_complaints = [{"term": a["_id"], "count": a["count"]} for a in top_agg if a["_id"]]
 
-    # Average consultation-to-billing turnaround (minutes) for closed cases in last 30 days
-    closed_cases = await db.cases.find({
-        "status": STATUS_CLOSED,
-        "closed_at": {"$gte": cutoff},
-        "consultation_started_at": {"$exists": True},
-    }, {"_id": 0, "consultation_started_at": 1, "closed_at": 1}).to_list(500)
-    durations = []
-    for c in closed_cases:
-        try:
-            s = datetime.fromisoformat(c["consultation_started_at"].replace("Z", "+00:00"))
-            e = datetime.fromisoformat(c["closed_at"].replace("Z", "+00:00"))
-            durations.append((e - s).total_seconds() / 60.0)
-        except Exception:
-            continue
-    avg_turnaround_min = round(sum(durations) / len(durations), 1) if durations else 0
+    # Avg consultation-to-billing turnaround (minutes) for closed cases in last 30d.
+    turnaround_pipeline = [
+        {"$match": {
+            "status": STATUS_CLOSED,
+            "closed_at": {"$gte": cutoff_30},
+            "consultation_started_at": {"$exists": True, "$ne": None},
+        }},
+        {"$project": {
+            "_id": 0,
+            "duration_min": {"$divide": [
+                {"$subtract": [
+                    {"$dateFromString": {"dateString": "$closed_at"}},
+                    {"$dateFromString": {"dateString": "$consultation_started_at"}},
+                ]},
+                60000,
+            ]},
+        }},
+        {"$group": {"_id": None, "avg": {"$avg": "$duration_min"}, "n": {"$sum": 1}}},
+    ]
+    t_agg = await db.cases.aggregate(turnaround_pipeline).to_list(1)
+    avg_turnaround_min = round(t_agg[0]["avg"], 1) if t_agg and t_agg[0].get("avg") is not None else 0
+    closed_cases_30d = t_agg[0]["n"] if t_agg else 0
 
     return {
         "case_trend_30d": case_trend,
         "logins_by_role_30d": logins_by_role,
-        "top_complaints": [{"term": t, "count": n} for t, n in top_complaints],
+        "top_complaints": top_complaints,
         "avg_turnaround_minutes": avg_turnaround_min,
-        "closed_cases_30d": len(closed_cases),
+        "closed_cases_30d": closed_cases_30d,
     }

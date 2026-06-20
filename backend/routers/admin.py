@@ -8,7 +8,8 @@ from core import (
     ROLE_ADMIN, ROLE_OWNER_DOCTOR,
     STATUS_CLOSED, ALL_STATUSES,
 )
-from models import UserCreateIn, UserUpdateIn
+from models import UserCreateIn, UserUpdateIn, MessagingSettingsIn
+from messaging import refresh_messaging_cache, provider_status, provider_source
 
 router = APIRouter()
 
@@ -109,4 +110,60 @@ async def admin_stats(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OWNER_
         "by_status": by_status,
         "by_doctor": by_doctor,
         "total_revenue": total_revenue,
+    }
+
+
+
+def _mask(value: str | None) -> str:
+    if not value:
+        return ""
+    if len(value) <= 6:
+        return "•" * len(value)
+    return f"{value[:3]}{'•' * (len(value) - 6)}{value[-3:]}"
+
+
+@router.get("/admin/messaging-settings")
+async def get_messaging_settings(user: dict = Depends(require_roles(ROLE_ADMIN))):
+    """Return masked stored creds plus provider status/source for the admin UI."""
+    doc = await db.settings.find_one({"_id": "messaging"}) or {}
+    masked = {k: _mask(v) for k, v in doc.items() if k != "_id"}
+    return {
+        "stored": masked,            # e.g. {"TWILIO_ACCOUNT_SID": "AC•••XYZ"}
+        "status": provider_status(),  # bool flags per channel
+        "source": provider_source(),  # "db" | "env" | "partial" | "none" per channel
+    }
+
+
+@router.post("/admin/messaging-settings")
+async def set_messaging_settings(
+    payload: MessagingSettingsIn,
+    user: dict = Depends(require_roles(ROLE_ADMIN)),
+):
+    """Persist provided fields (non-empty). Empty/missing fields are left as-is.
+    Pass an explicit empty-string sentinel "__CLEAR__" to clear a field.
+    """
+    raw = payload.model_dump(exclude_none=True)
+    to_set: dict = {}
+    to_unset: dict = {}
+    for k, v in raw.items():
+        if v == "__CLEAR__":
+            to_unset[k] = ""
+        elif v.strip():
+            to_set[k] = v.strip()
+    if not (to_set or to_unset):
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    update: dict = {}
+    if to_set:
+        update["$set"] = to_set
+    if to_unset:
+        update["$unset"] = to_unset
+    await db.settings.update_one({"_id": "messaging"}, update, upsert=True)
+    await refresh_messaging_cache(db)
+    await audit(user, "UPDATE", "MessagingSettings", "messaging", {
+        "set": list(to_set.keys()), "cleared": list(to_unset.keys()),
+    })
+    return {
+        "ok": True,
+        "status": provider_status(),
+        "source": provider_source(),
     }

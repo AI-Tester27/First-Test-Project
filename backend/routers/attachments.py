@@ -22,9 +22,22 @@ async def upload_attachment(
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail=f"Only {sorted(ALLOWED_EXTS)} allowed")
-    data = await file.read()
-    if len(data) > MAX_BYTES:
+    # Stream-read with a hard cap to avoid loading huge payloads into memory.
+    # If client advertises size up-front, reject early.
+    advertised = getattr(file, "size", None)
+    if advertised is not None and advertised > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds 10MB limit")
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)  # 64KB
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds 10MB limit")
+        chunks.append(chunk)
+    data = b"".join(chunks)
     content_type = MIME_TYPES[ext]
     patient_uid = (await db.patients.find_one({"id": c["patient_id"]}, {"patient_uid": 1, "_id": 0})) or {}
     path = f"{APP_NAME}/attachments/{patient_uid.get('patient_uid', 'unknown')}/{case_id}/{uuid.uuid4()}.{ext}"
