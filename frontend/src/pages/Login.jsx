@@ -111,14 +111,8 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-8 text-xs text-gray-500 border-t border-gray-100 pt-5">
-            <div className="font-semibold uppercase tracking-wider text-gray-400 mb-2 text-[10px]">Demo accounts</div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 tabular-nums" data-testid="demo-credentials">
-              <div>admin1</div><div className="text-gray-400">Password@123</div>
-              <div>jyothi</div><div className="text-gray-400">Password@123</div>
-              <div>hemanth</div><div className="text-gray-400">Password@123</div>
-              <div>reception1</div><div className="text-gray-400">Password@123</div>
-              <div>pharmacy1</div><div className="text-gray-400">Password@123</div>
-              <div>pro1</div><div className="text-gray-400">Password@123</div>
+            <div className="text-gray-500 leading-relaxed">
+              Trouble signing in? Contact the clinic administrator to reset your credentials.
             </div>
           </div>
         </div>

@@ -15,7 +15,7 @@ from core import mongo_client, now_utc
 from storage import init_storage
 from messaging import provider_status
 from seed import seed_all
-from routers import auth, patients, cases, pharmacy, payments, reminders, attachments, ai, exports, admin
+from routers import auth, patients, cases, pharmacy, payments, reminders, attachments, ai, exports, admin, dashboards
 from routers.reminders import reminder_scheduler
 
 app = FastAPI(title="Sparsa Homeoclinic API")
@@ -33,7 +33,7 @@ async def health():
 
 
 # Mount all domain routers under /api
-for r in (auth, patients, cases, pharmacy, payments, reminders, attachments, ai, exports, admin):
+for r in (auth, patients, cases, pharmacy, payments, reminders, attachments, ai, exports, admin, dashboards):
     api.include_router(r.router)
 
 app.include_router(api)

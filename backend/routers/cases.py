@@ -205,6 +205,7 @@ async def set_followup(
         "doctor_id": c["assigned_doctor_id"],
         "scheduled_at": payload.next_followup_at.isoformat(),
         "message": payload.followup_note or "Follow-up due",
+        "audience": ["DOCTOR", "PHARMACY"] if payload.notify_pharmacy else ["DOCTOR"],
         "status": "PENDING",
         "created_at": now_utc().isoformat(),
     })

@@ -57,3 +57,55 @@ export function roleHomePath(role) {
     default: return "/login";
   }
 }
+
+// ─── IST helpers ────────────────────────────────────────────────
+const IST_LOCALE = "en-IN";
+const IST_TZ = { timeZone: "Asia/Kolkata" };
+
+export function fmtIST(iso, { withTime = true } = {}) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(IST_LOCALE, {
+      ...IST_TZ,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit", hour12: true } : {}),
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export function fmtIST_time(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString(IST_LOCALE, { ...IST_TZ, hour: "2-digit", minute: "2-digit", hour12: true });
+  } catch { return iso; }
+}
+
+export function fmtIST_date(iso) {
+  return fmtIST(iso, { withTime: false });
+}
+
+/** Convert datetime-local input ("2024-01-15T10:00") interpreted as IST to UTC ISO. */
+export function istLocalToUtcISO(localStr) {
+  if (!localStr) return null;
+  // localStr is like "2024-01-15T10:00" (browser local). User intends this as IST.
+  const [date, time] = localStr.split("T");
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = (time || "00:00").split(":").map(Number);
+  // Build UTC time = IST time - 5h30m
+  const utc = new Date(Date.UTC(y, m - 1, d, hh, mm) - (5 * 60 + 30) * 60000);
+  return utc.toISOString();
+}
+
+/** Convert a UTC ISO timestamp to a datetime-local input value in IST. */
+export function utcISOToIstLocal(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const ist = new Date(d.getTime() + (5 * 60 + 30) * 60000);
+  return ist.toISOString().slice(0, 16);
+}

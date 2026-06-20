@@ -19,6 +19,7 @@ import DoctorReminders from "@/pages/doctor/Reminders";
 
 import PharmacyDashboard from "@/pages/pharmacy/Dashboard";
 import PharmacyCase from "@/pages/pharmacy/CaseDetail";
+import PharmacyReminders from "@/pages/pharmacy/Reminders";
 
 import ProDashboard from "@/pages/pro/Dashboard";
 import BillingDetail from "@/pages/pro/BillingDetail";
@@ -70,6 +71,7 @@ export default function App() {
 
               {/* Pharmacy */}
               <Route path="/pharmacy" element={<RequireAuth roles={PHARMACY_ROLES}><PharmacyDashboard /></RequireAuth>} />
+              <Route path="/pharmacy/reminders" element={<RequireAuth roles={PHARMACY_ROLES}><PharmacyReminders /></RequireAuth>} />
               <Route path="/pharmacy/cases/:id" element={<RequireAuth roles={PHARMACY_ROLES}><PharmacyCase /></RequireAuth>} />
 
               {/* PRO */}

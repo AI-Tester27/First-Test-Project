@@ -29,7 +29,8 @@ const NAV_BY_ROLE = {
     { to: "/reception/new-visit", label: "New Visit", icon: FileText },
   ],
   PHARMACY: [
-    { to: "/pharmacy", label: "Dispensing Queue", icon: Pill, end: true },
+    { to: "/pharmacy", label: "Dashboard", icon: Pill, end: true },
+    { to: "/pharmacy/reminders", label: "Reminders", icon: ClipboardList },
   ],
   PRO: [
     { to: "/pro", label: "Billing Queue", icon: ReceiptText, end: true },

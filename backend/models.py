@@ -51,6 +51,7 @@ class PrescriptionIn(BaseModel):
 class FollowupIn(BaseModel):
     next_followup_at: datetime
     followup_note: Optional[str] = ""
+    notify_pharmacy: bool = False
 
 
 class StatusUpdateIn(BaseModel):
@@ -85,6 +86,38 @@ class UserUpdateIn(BaseModel):
     role: Optional[str] = None
     active: Optional[bool] = None
     password: Optional[str] = None
+
+
+class PatientUpdateIn(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    gender: Optional[Literal["MALE", "FEMALE", "OTHER"]] = None
+    age: Optional[int] = Field(default=None, ge=0, le=150)
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    preferred_language: Optional[Literal["EN", "TE"]] = None
+
+
+class ReminderCreateIn(BaseModel):
+    patient_id: str
+    case_id: Optional[str] = None
+    scheduled_at: datetime
+    message: str
+    audience: List[Literal["DOCTOR", "PHARMACY"]] = ["DOCTOR"]
+    notify_pharmacy: bool = False
+
+
+class ReminderUpdateIn(BaseModel):
+    status: Optional[Literal["PENDING", "COMPLETED", "FAILED"]] = None
+    snooze_until: Optional[datetime] = None
+    message: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AiSettingsIn(BaseModel):
+    provider: Literal["emergent", "openai", "anthropic"] = "emergent"
+    api_key: Optional[str] = None
+    model: Optional[str] = None
 
 
 class PastVisitIn(BaseModel):

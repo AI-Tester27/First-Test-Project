@@ -8,7 +8,7 @@ from core import (
     ROLE_RECEPTION, ROLE_OWNER_DOCTOR, ROLE_ADMIN, ROLE_DOCTOR, ROLE_PHARMACY,
     STATUS_CLOSED,
 )
-from models import PatientIn, PastVisitIn
+from models import PatientIn, PastVisitIn, PatientUpdateIn  # noqa: F401
 
 router = APIRouter()
 
@@ -63,6 +63,52 @@ async def get_patient(patient_id: str, user: dict = Depends(get_current_user)):
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found")
     return {"patient": p}
+
+
+@router.patch("/patients/{patient_id}")
+async def update_patient(
+    patient_id: str,
+    payload: "PatientUpdateIn",
+    user: dict = Depends(require_roles(ROLE_RECEPTION, ROLE_OWNER_DOCTOR, ROLE_ADMIN)),
+):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    update["updated_at"] = now_utc().isoformat()
+    await db.patients.update_one({"id": patient_id}, {"$set": update})
+    await audit(user, "UPDATE", "Patient", patient_id, {"fields": list(update.keys())})
+    updated = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    return {"patient": updated}
+
+
+@router.delete("/patients/{patient_id}")
+async def delete_patient(
+    patient_id: str,
+    user: dict = Depends(require_roles(ROLE_RECEPTION, ROLE_OWNER_DOCTOR, ROLE_ADMIN)),
+):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    case_count = await db.cases.count_documents({"patient_id": patient_id})
+    if case_count > 0 and user["role"] != ROLE_ADMIN:
+        raise HTTPException(status_code=409, detail=f"Patient has {case_count} cases — only admin can delete patients with visit history")
+    # Hard delete: patient + all related records
+    await db.patients.delete_one({"id": patient_id})
+    await db.cases.delete_many({"patient_id": patient_id})
+    case_ids_cursor = db.cases.find({"patient_id": patient_id}, {"id": 1})
+    case_ids = [c["id"] async for c in case_ids_cursor]
+    if case_ids:
+        await db.clinical_notes.delete_many({"case_id": {"$in": case_ids}})
+        await db.prescriptions.delete_many({"case_id": {"$in": case_ids}})
+        await db.pharmacy_dispense.delete_many({"case_id": {"$in": case_ids}})
+        await db.payments.delete_many({"case_id": {"$in": case_ids}})
+        await db.attachments.update_many({"case_id": {"$in": case_ids}}, {"$set": {"is_deleted": True}})
+    await db.reminders.delete_many({"patient_id": patient_id})
+    await audit(user, "DELETE", "Patient", patient_id, {"patient_uid": p.get("patient_uid"), "cases_removed": case_count})
+    return {"ok": True, "deleted_cases": case_count}
 
 
 @router.get("/patients/{patient_id}/timeline")

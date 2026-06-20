@@ -54,6 +54,23 @@ async def admin_update_user(user_id: str, payload: UserUpdateIn, user: dict = De
     return {"user": u}
 
 
+@router.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    # Don't actually delete owner doctor accounts (data integrity); only mark inactive
+    if target.get("role") == ROLE_OWNER_DOCTOR:
+        await db.users.update_one({"id": user_id}, {"$set": {"active": False}})
+        await audit(user, "DEACTIVATE", "User", user_id, {"reason": "owner_protect"})
+        return {"ok": True, "soft_deleted": True}
+    await db.users.delete_one({"id": user_id})
+    await audit(user, "DELETE", "User", user_id, {"username": target.get("username")})
+    return {"ok": True}
+
+
 @router.get("/admin/audit-logs")
 async def admin_audit_logs(limit: int = 200, user: dict = Depends(require_roles(ROLE_ADMIN))):
     logs = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)

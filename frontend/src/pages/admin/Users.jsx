@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtErr } from "@/lib/api";
-import { Plus, Loader2, X } from "lucide-react";
+import { Plus, Loader2, X, Trash2 } from "lucide-react";
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -30,6 +30,12 @@ export default function AdminUsers() {
   const toggleActive = async (u) => {
     await api.patch(`/admin/users/${u.id}`, { active: !u.active });
     reload();
+  };
+
+  const removeUser = async (u) => {
+    if (!window.confirm(`Delete user ${u.username}? This cannot be undone.`)) return;
+    try { await api.delete(`/admin/users/${u.id}`); reload(); }
+    catch (e) { setErr(fmtErr(e)); }
   };
 
   return (
@@ -91,9 +97,14 @@ export default function AdminUsers() {
                   <span className={`pill ${u.active ? "pill-paid" : "pill-unpaid"}`}>{u.active ? "Active" : "Disabled"}</span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => toggleActive(u)} className="text-xs text-gray-600 hover:text-gray-900" data-testid={`toggle-user-${u.username}`}>
-                    {u.active ? "Disable" : "Enable"}
-                  </button>
+                  <div className="inline-flex items-center gap-2">
+                    <button onClick={() => toggleActive(u)} className="text-xs text-gray-600 hover:text-gray-900" data-testid={`toggle-user-${u.username}`}>
+                      {u.active ? "Disable" : "Enable"}
+                    </button>
+                    <button onClick={() => removeUser(u)} className="text-gray-400 hover:text-red-600" data-testid={`delete-user-${u.username}`} title="Delete">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
