@@ -242,6 +242,27 @@ class TestReminders:
         r = sessions["reception1"]["s"].patch(f"{API}/reminders/{rid}", json={"status": "PENDING"}, timeout=10)
         assert r.status_code == 403, r.text
 
+    def test_pro_cannot_patch_reminder(self, sessions):
+        """PRO is not in the update_reminder allowlist — must get 403."""
+        rid = TestReminders._pharmacy_rid
+        r = sessions["pro1"]["s"].patch(f"{API}/reminders/{rid}", json={"status": "PENDING"}, timeout=10)
+        assert r.status_code == 403, r.text
+
+    def test_pharmacy_can_still_patch_pharmacy_reminder(self, sessions, fixture_patient):
+        """After the RBAC tightening, pharmacy must STILL be able to PATCH a PHARMACY-audience reminder."""
+        future = (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat()
+        cr = sessions["jyothi"]["s"].post(f"{API}/reminders", json={
+            "patient_id": fixture_patient["patient_id"],
+            "case_id": fixture_patient["case_id"],
+            "scheduled_at": future, "message": "RBAC retest pharmacy",
+            "audience": ["PHARMACY"],
+        }, timeout=10)
+        assert cr.status_code == 200, cr.text
+        rid = cr.json()["reminder"]["id"]
+        upd = sessions["pharmacy1"]["s"].patch(f"{API}/reminders/{rid}", json={"status": "COMPLETED"}, timeout=10)
+        assert upd.status_code == 200, upd.text
+        assert upd.json()["reminder"]["status"] == "COMPLETED"
+
     def test_snooze_resets_status_pending(self, sessions, fixture_patient):
         future = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
         r = sessions["jyothi"]["s"].post(f"{API}/reminders", json={
@@ -359,3 +380,101 @@ class TestDashboards:
         ist = timezone(timedelta(hours=5, minutes=30))
         today_label = datetime.now(ist).strftime("%a")
         assert trend[-1]["label"] == today_label, f"last item should be today's IST weekday {today_label}, got {trend[-1]['label']}"
+
+
+# ───────── PATIENT DELETE — ORPHAN VERIFICATION ─────────
+class TestPatientDeleteOrphanCheck:
+    """Direct DB verification that cascade actually purges collateral collections."""
+
+    def test_cascade_purges_collaterals_and_soft_deletes_attachments(self, sessions, doctors):
+        import pymongo
+        mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+        db_name = os.environ.get("DB_NAME", "sparsa_homeoclinic")
+        mc = pymongo.MongoClient(mongo_url)
+        mdb = mc[db_name]
+
+        recep = sessions["reception1"]["s"]
+        admin = sessions["admin1"]["s"]
+        jy = sessions["jyothi"]["s"]
+
+        # 1. Create patient + case
+        pr = recep.post(f"{API}/patients", json={
+            "first_name": "TEST_R5_ORPHAN", "last_name": f"X_{uuid.uuid4().hex[:6]}",
+            "phone": "9990009001", "preferred_language": "EN", "age": 28, "gender": "MALE",
+        }, timeout=10)
+        assert pr.status_code == 200, pr.text
+        pid = pr.json()["patient"]["id"]
+
+        c = recep.post(f"{API}/cases", json={
+            "patient_id": pid, "assigned_doctor_id": doctors[0]["id"],
+            "complaint_text": "Orphan-cascade verification",
+        }, timeout=10)
+        assert c.status_code == 200, c.text
+        cid = c.json()["case"]["id"]
+
+        # 2. Save clinical notes + prescription
+        n = jy.put(f"{API}/cases/{cid}/notes", json={
+            "diagnosis_summary": "TEST_R5 orphan", "sensitivity_allergies": "",
+            "safety_notes": "", "suggestions": "", "additional_info": "",
+        }, timeout=10)
+        assert n.status_code == 200, n.text
+
+        rx = jy.post(f"{API}/cases/{cid}/prescription", json={
+            "items": [{"medicine_name": "Bryonia 30", "dose": "3 drops", "frequency": "BID", "duration_days": 5}],
+            "notes_for_patient": "", "notes_internal": "",
+        }, timeout=10)
+        assert rx.status_code == 200, rx.text
+
+        # 3. Insert an attachment doc directly (no upload endpoint convenient — testing soft-delete cascade flag only)
+        att_id = f"att_TEST_R5_{uuid.uuid4().hex[:8]}"
+        mdb.attachments.insert_one({
+            "id": att_id, "case_id": cid, "patient_id": pid,
+            "filename": "TEST_R5.pdf", "is_deleted": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # 4. Payment via PRO (CASH)
+        pay = sessions["pro1"]["s"].post(f"{API}/cases/{cid}/payment", json={
+            "consultation_amount": 200, "medicines_taken": False,
+            "medicine_amount": 0, "amount_paid": 200, "payment_mode": "CASH",
+        }, timeout=10)
+        assert pay.status_code == 200, pay.text
+
+        # Optional: pharmacy_dispense — try via API (best-effort; if endpoint shape differs, insert directly)
+        mdb.pharmacy_dispense.insert_one({
+            "id": f"disp_TEST_R5_{uuid.uuid4().hex[:8]}",
+            "case_id": cid, "patient_id": pid,
+            "items": [], "dispensed_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Sanity: pre-delete, collaterals exist
+        assert mdb.clinical_notes.count_documents({"case_id": cid}) >= 1
+        assert mdb.prescriptions.count_documents({"case_id": cid}) >= 1
+        assert mdb.payments.count_documents({"case_id": cid}) >= 1
+        assert mdb.pharmacy_dispense.count_documents({"case_id": cid}) >= 1
+        assert mdb.attachments.count_documents({"case_id": cid, "is_deleted": False}) >= 1
+
+        # 5. Delete patient as admin
+        d = admin.delete(f"{API}/patients/{pid}", timeout=15)
+        assert d.status_code == 200, d.text
+
+        # 6. Verify orphan cleanup
+        assert mdb.clinical_notes.count_documents({"case_id": cid}) == 0, \
+            "clinical_notes orphans remain after patient delete"
+        assert mdb.prescriptions.count_documents({"case_id": cid}) == 0, \
+            "prescriptions orphans remain after patient delete"
+        assert mdb.payments.count_documents({"case_id": cid}) == 0, \
+            "payments orphans remain after patient delete"
+        assert mdb.pharmacy_dispense.count_documents({"case_id": cid}) == 0, \
+            "pharmacy_dispense orphans remain after patient delete"
+        # attachments soft-deleted (not hard-deleted)
+        live_atts = mdb.attachments.count_documents({"case_id": cid, "is_deleted": False})
+        soft_atts = mdb.attachments.count_documents({"case_id": cid, "is_deleted": True})
+        assert live_atts == 0, "attachments should have is_deleted=True after patient delete"
+        assert soft_atts >= 1, "attachments should be retained with is_deleted=True (soft delete)"
+
+        # Cases and patient themselves are gone
+        assert mdb.cases.count_documents({"id": cid}) == 0
+        assert mdb.patients.count_documents({"id": pid}) == 0
+
+        mc.close()

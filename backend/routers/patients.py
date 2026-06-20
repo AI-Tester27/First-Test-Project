@@ -95,9 +95,7 @@ async def delete_patient(
     case_count = await db.cases.count_documents({"patient_id": patient_id})
     if case_count > 0 and user["role"] != ROLE_ADMIN:
         raise HTTPException(status_code=409, detail=f"Patient has {case_count} cases — only admin can delete patients with visit history")
-    # Hard delete: patient + all related records
-    await db.patients.delete_one({"id": patient_id})
-    await db.cases.delete_many({"patient_id": patient_id})
+    # Collect case_ids BEFORE deleting cases (otherwise cascade lookup returns empty).
     case_ids_cursor = db.cases.find({"patient_id": patient_id}, {"id": 1})
     case_ids = [c["id"] async for c in case_ids_cursor]
     if case_ids:
@@ -106,7 +104,9 @@ async def delete_patient(
         await db.pharmacy_dispense.delete_many({"case_id": {"$in": case_ids}})
         await db.payments.delete_many({"case_id": {"$in": case_ids}})
         await db.attachments.update_many({"case_id": {"$in": case_ids}}, {"$set": {"is_deleted": True}})
+    await db.cases.delete_many({"patient_id": patient_id})
     await db.reminders.delete_many({"patient_id": patient_id})
+    await db.patients.delete_one({"id": patient_id})
     await audit(user, "DELETE", "Patient", patient_id, {"patient_uid": p.get("patient_uid"), "cases_removed": case_count})
     return {"ok": True, "deleted_cases": case_count}
 

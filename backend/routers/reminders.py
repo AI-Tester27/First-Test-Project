@@ -69,7 +69,7 @@ async def create_reminder(
 async def update_reminder(
     reminder_id: str,
     payload: ReminderUpdateIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_PHARMACY, ROLE_ADMIN)),
 ):
     r = await db.reminders.find_one({"id": reminder_id})
     if not r:
