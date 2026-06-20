@@ -35,11 +35,18 @@ Refactored 1154-line server.py into modular routers (core.py + models.py + 10 ro
 - **PRO privacy fix** — clinician-written reminder notes hidden from PRO followups feed.
 - ✅ 98/98 backend tests pass with iteration_5 fixes verified.
 
+### v5 (121 tests pass — 2026-06-20)
+- **Admin Messaging Settings page** (`/admin/messaging`) — DB-backed runtime Twilio + WhatsApp credentials, no restart required. Masked display, per-field Clear via `__CLEAR__` sentinel, 30s cache refresh in scheduler. Endpoints: `GET/POST /api/admin/messaging-settings`. Provider precedence: DB → env.
+- **Admin Analytics → MongoDB aggregations** — replaced 30 sequential `count_documents`+`aggregate` calls with two bucketed aggregations using `$dateAdd` + `$dateToString` (IST). Top complaints now `$split`/`$unwind`/`$group` server-side. Turnaround now a single `$dateFromString` aggregation. <0.5s on current dataset.
+- **File-upload size hardening** — `/api/cases/{id}/attachments` streams in 64 KB chunks, aborts at >10 MB without buffering full payload.
+- ✅ iteration_6: 23/23 backend + 8/8 frontend tests pass.
+
 ## Bring-your-own-key for AI (status)
 Currently uses Emergent Universal LLM key (Claude Sonnet 4.5). Provider abstraction is in `routers/ai.py::_call_llm`. To swap to direct OpenAI or Anthropic, set the appropriate env var and switch the model line — full BYOK admin UI is on the P1 backlog.
 
 ## How to enable WhatsApp + SMS reminders
-Add to `/app/backend/.env` and restart backend:
+**Option A (preferred):** Log in as ADMIN → sidebar → **Messaging** → paste keys → Save. Live immediately, no restart.
+**Option B:** Add to `/app/backend/.env` and restart backend:
 ```
 WHATSAPP_PHONE_NUMBER_ID=...
 WHATSAPP_ACCESS_TOKEN=...
@@ -65,6 +72,6 @@ Per Emergent support: appears only in the preview environment. Auto-removed on d
 - Brute-force lockout on `/api/auth/login`.
 
 ## Next Action Items
-- Add custom Sparsa Homeoclinic logo file (PNG/SVG) — current build uses a tasteful leaf monogram.
-- Paste Twilio + WhatsApp keys into backend/.env to activate WhatsApp/SMS.
+- Add custom Sparsa Homeoclinic logo file (PNG/SVG) — user said they would upload; not yet provided. Current build uses a tasteful leaf monogram.
+- Paste Twilio + WhatsApp keys via the new **/admin/messaging** page (or backend/.env) to activate WhatsApp/SMS.
 - Schedule `/app/scripts/backup.sh` on the clinic server PC (cron / Task Scheduler).
