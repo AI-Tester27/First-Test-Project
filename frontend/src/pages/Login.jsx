@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { fmtErr, roleHomePath } from "@/lib/api";
-import { Leaf, Loader2 } from "lucide-react";
+import Logo from "@/components/Logo";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -39,8 +40,11 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
         <div className="relative z-10 p-12 flex flex-col justify-end">
           <div className="max-w-md">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-700 text-white rounded-full text-xs tracking-wider uppercase font-medium mb-6">
-              <Leaf size={14} strokeWidth={1.5} /> Sparsa Homeoclinic
+            <div className="bg-white/90 backdrop-blur-sm rounded-lg p-4 inline-flex items-center gap-3 mb-6 shadow-sm">
+              <Logo size={56} />
+              <div className="text-[11px] uppercase tracking-[0.18em] text-gray-600 font-semibold leading-tight">
+                Internal<br />Workspace
+              </div>
             </div>
             <h1 className="font-display text-4xl font-semibold tracking-tight text-gray-900 leading-tight">
               A calmer way to run your clinic.
@@ -55,13 +59,10 @@ export default function LoginPage() {
       {/* Right: login form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-white">
         <div className="w-full max-w-sm">
-          <div className="flex items-center gap-2 mb-10">
-            <div className="w-10 h-10 rounded-md bg-teal-700 text-white grid place-items-center">
-              <Leaf size={20} strokeWidth={1.5} />
-            </div>
-            <div>
-              <div className="font-display font-semibold text-base text-gray-900">Sparsa Homeoclinic</div>
-              <div className="text-[11px] uppercase tracking-wider text-gray-500">Internal Workspace</div>
+          <div className="flex items-center gap-3 mb-10">
+            <Logo size={56} />
+            <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-semibold leading-tight">
+              Internal<br />Workspace
             </div>
           </div>
 

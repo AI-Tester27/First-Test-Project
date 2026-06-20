@@ -1,6 +1,7 @@
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLE_LABELS } from "@/lib/api";
+import Logo from "@/components/Logo";
 import {
   LayoutDashboard, Users, FileText, Pill, ReceiptText,
   ShieldCheck, ClipboardList, LogOut, Leaf, FileDown, MessageSquare,
@@ -49,13 +50,10 @@ export default function AppLayout() {
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col" data-testid="app-sidebar">
         <div className="p-5 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-md bg-teal-700 text-white grid place-items-center">
-              <Leaf size={18} strokeWidth={1.5} />
-            </div>
-            <div>
-              <div className="font-display font-semibold text-[15px] text-gray-900 leading-tight">Sparsa</div>
-              <div className="text-[11px] uppercase tracking-wider text-gray-500">Homeoclinic</div>
+          <div className="flex items-center gap-3">
+            <Logo size={44} />
+            <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-semibold leading-tight">
+              Internal<br />Workspace
             </div>
           </div>
         </div>

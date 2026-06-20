@@ -152,9 +152,9 @@ async def deliver_reminder(reminder: dict) -> None:
     except Exception:
         when_str = when
     if lang == "TE":
-        body = f"నమస్తే {name},\nమీ ఫాలో-అప్ {when_str}కి సిద్ధంగా ఉంది. — Sparsa Homeoclinic"
+        body = f"నమస్తే {name},\nమీ ఫాలో-అప్ {when_str}కి సిద్ధంగా ఉంది. — Sparsa Homeo Care"
     else:
-        body = f"Hi {name}, your follow-up is on {when_str}. — Sparsa Homeoclinic"
+        body = f"Hi {name}, your follow-up is on {when_str}. — Sparsa Homeo Care"
     if reminder.get("message"):
         body += f"\n{reminder['message']}"
 

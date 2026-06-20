@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Leaf, Printer } from "lucide-react";
+import Logo from "@/components/Logo";
+import { Printer } from "lucide-react";
 
 export default function Receipt() {
   const { id } = useParams();
@@ -20,10 +21,10 @@ export default function Receipt() {
         </button>
       </div>
       <div className="printable max-w-md mx-auto bg-white border border-gray-200 p-8 font-mono text-sm">
-        <div className="flex items-center gap-2 border-b border-dashed border-gray-300 pb-3 mb-3">
-          <div className="w-9 h-9 rounded-md bg-teal-700 text-white grid place-items-center"><Leaf size={16} strokeWidth={1.5} /></div>
+        <div className="flex items-center gap-3 border-b border-dashed border-gray-300 pb-3 mb-3">
+          <Logo size={44} />
           <div>
-            <div className="font-display font-semibold text-base text-gray-900">Sparsa Homeoclinic</div>
+            <div className="font-display font-semibold text-base text-gray-900">Sparsa Homeo Care</div>
             <div className="text-[11px] text-gray-500">Internal receipt · Non-GST</div>
           </div>
         </div>
@@ -64,7 +65,7 @@ export default function Receipt() {
         </div>
 
         <div className="text-center text-[11px] text-gray-500 mt-4 leading-relaxed">
-          Thank you for visiting Sparsa Homeoclinic.<br />
+          Thank you for visiting Sparsa Homeo Care.<br />
           {isTelugu && <span>మీ సందర్శనకు ధన్యవాదాలు.</span>}
         </div>
       </div>

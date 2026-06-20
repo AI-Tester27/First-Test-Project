@@ -41,6 +41,11 @@ Refactored 1154-line server.py into modular routers (core.py + models.py + 10 ro
 - **File-upload size hardening** — `/api/cases/{id}/attachments` streams in 64 KB chunks, aborts at >10 MB without buffering full payload.
 - ✅ iteration_6: 23/23 backend + 8/8 frontend tests pass.
 
+### v6 (logo branding — 2026-06-20)
+- **Sparsa Homeo Care logo** wired into the sidebar, login hero card + login header, and the printable receipt. Saved at `/app/frontend/public/logo.png`. Also wired as favicon + apple-touch-icon.
+- Reusable `<Logo />` component (`/app/frontend/src/components/Logo.jsx`) as single source of truth.
+- Brand text harmonised to "Sparsa Homeo Care" in receipts, browser title, page meta, and WhatsApp/SMS reminder body.
+
 ## Bring-your-own-key for AI (status)
 Currently uses Emergent Universal LLM key (Claude Sonnet 4.5). Provider abstraction is in `routers/ai.py::_call_llm`. To swap to direct OpenAI or Anthropic, set the appropriate env var and switch the model line — full BYOK admin UI is on the P1 backlog.
 
@@ -72,6 +77,6 @@ Per Emergent support: appears only in the preview environment. Auto-removed on d
 - Brute-force lockout on `/api/auth/login`.
 
 ## Next Action Items
-- Add custom Sparsa Homeoclinic logo file (PNG/SVG) — user said they would upload; not yet provided. Current build uses a tasteful leaf monogram.
-- Paste Twilio + WhatsApp keys via the new **/admin/messaging** page (or backend/.env) to activate WhatsApp/SMS.
-- Schedule `/app/scripts/backup.sh` on the clinic server PC (cron / Task Scheduler).
+- Replace `/app/frontend/public/logo.png` with a higher-res / SVG version anytime — the `<Logo />` component already loads from `/logo.png`.
+- Paste Twilio + WhatsApp keys via **/admin/messaging** (or backend/.env) to activate WhatsApp/SMS.
+- Schedule `/app/scripts/backup.sh` on the clinic server PC (cron / Task Scheduler) — see `/app/scripts/README.md`.
