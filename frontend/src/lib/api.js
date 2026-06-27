@@ -7,11 +7,35 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+// Friendly labels for backend field paths in validation errors.
+const FIELD_LABELS = {
+  height_cm: "Height (cm)",
+  weight_kg: "Weight (kg)",
+  age: "Age",
+  phone: "Phone",
+  first_name: "First name",
+  last_name: "Last name",
+  consulting_doctor_id: "Consulting doctor",
+  chief_complaint: "Chief complaint",
+  visit_type: "Visit type",
+  marital_status: "Marital status",
+  password: "Password",
+  username: "Username",
+  next_followup_date: "Follow-up date",
+};
+
 export function fmtErr(err) {
   const d = err?.response?.data?.detail;
   if (!d) return err?.message || "Something went wrong.";
   if (typeof d === "string") return d;
-  if (Array.isArray(d)) return d.map((e) => e?.msg || JSON.stringify(e)).join(" ");
+  if (Array.isArray(d)) {
+    return d.map((e) => {
+      const path = (e?.loc || []).filter((p) => p !== "body");
+      const last = path[path.length - 1];
+      const label = FIELD_LABELS[last] || (typeof last === "string" ? last.replace(/_/g, " ") : "Value");
+      return `${label}: ${e?.msg || "invalid value"}`;
+    }).join(" · ");
+  }
   return JSON.stringify(d);
 }
 

@@ -65,6 +65,17 @@ export default function NewPatient() {
   const submit = async (e) => {
     e.preventDefault();
     if (!form.consulting_doctor_id) { setErr("Please select a consulting doctor."); return; }
+    // Sanity-check height/weight units (common slip-up: entering height in feet/meters)
+    const h = form.height_cm ? Number(form.height_cm) : null;
+    const w = form.weight_kg ? Number(form.weight_kg) : null;
+    if (h !== null && (h < 20 || h > 250)) {
+      setErr(`Height looks off (${h}). Enter the value in centimeters — for example 170 for a typical adult, not 1.7 or 5'7".`);
+      return;
+    }
+    if (w !== null && (w < 1 || w > 350)) {
+      setErr(`Weight looks off (${w}). Enter the value in kilograms — for example 65.`);
+      return;
+    }
     setBusy(true); setErr("");
     try {
       const payload = {
@@ -144,11 +155,11 @@ export default function NewPatient() {
           </Field>
 
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Height (cm)">
-              <input type="number" step="0.1" className="input tabular-nums" value={form.height_cm} onChange={(e) => setForm({ ...form, height_cm: e.target.value })} data-testid="height-input" />
+            <Field label="Height (cm)" hint="in centimeters, e.g. 170">
+              <input type="number" step="1" min="20" max="300" placeholder="170" className="input tabular-nums" value={form.height_cm} onChange={(e) => setForm({ ...form, height_cm: e.target.value })} data-testid="height-input" />
             </Field>
-            <Field label="Weight (kg)">
-              <input type="number" step="0.1" className="input tabular-nums" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} data-testid="weight-input" />
+            <Field label="Weight (kg)" hint="in kilograms, e.g. 65">
+              <input type="number" step="0.1" min="1" max="500" placeholder="65" className="input tabular-nums" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} data-testid="weight-input" />
             </Field>
             <Field label="BMI (auto)">
               <input className="input bg-gray-50 tabular-nums" value={bmi || ""} readOnly placeholder="—" data-testid="bmi-display" />
@@ -231,13 +242,14 @@ function Section({ title, subtitle, children }) {
   );
 }
 
-function Field({ label, required, children }) {
+function Field({ label, required, hint, children }) {
   return (
     <div>
       <label className="text-xs uppercase tracking-wider font-semibold text-gray-500 block mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <div className="text-[11px] text-gray-400 mt-1">{hint}</div>}
     </div>
   );
 }
