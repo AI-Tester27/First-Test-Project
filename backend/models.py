@@ -1,5 +1,5 @@
 """All Pydantic request/response models."""
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
@@ -9,14 +9,41 @@ class LoginIn(BaseModel):
     password: str
 
 
+PATIENT_SOURCES = Literal[
+    "TELEVISION", "NEWSPAPER", "MEDICAL_CAMPS", "SIGN_BOARDS", "BANNERS",
+    "NEARBY_RESIDENCE", "SOCIAL_MEDIA", "YOUTUBE", "FACEBOOK", "INSTAGRAM",
+    "ONLINE_SEARCH", "REFERRAL", "OTHERS",
+]
+
+VISIT_TYPES = Literal["WALK_IN", "APPOINTMENT"]
+MARITAL_STATUSES = Literal["SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "OTHER"]
+
+
 class PatientIn(BaseModel):
     first_name: str
-    last_name: str
+    last_name: str = ""
     gender: Literal["MALE", "FEMALE", "OTHER"]
     age: int = Field(ge=0, le=150)
     phone: str
     address: Optional[str] = None
     preferred_language: Literal["EN", "TE"] = "EN"
+    # FIR additions (all optional for backward compat)
+    marital_status: Optional[MARITAL_STATUSES] = None
+    height_cm: Optional[float] = Field(default=None, ge=20, le=300)
+    weight_kg: Optional[float] = Field(default=None, ge=1, le=500)
+    consulting_doctor_id: Optional[str] = None
+    sources: List[PATIENT_SOURCES] = []
+    referral_name: Optional[str] = None
+    chief_complaint: Optional[str] = None
+    visit_type: Optional[VISIT_TYPES] = None
+
+
+class FIRPatientIn(PatientIn):
+    """Full First Information Report — creates patient AND first case in one go.
+    Requires consulting_doctor_id + chief_complaint + visit_type."""
+    consulting_doctor_id: str
+    chief_complaint: str
+    visit_type: VISIT_TYPES
 
 
 class CaseCreateIn(BaseModel):
@@ -49,7 +76,7 @@ class PrescriptionIn(BaseModel):
 
 
 class FollowupIn(BaseModel):
-    next_followup_at: datetime
+    next_followup_date: date  # date-only — no time component (per user request, avoids auto-completion confusion)
     followup_note: Optional[str] = ""
     notify_pharmacy: bool = False
 
@@ -96,6 +123,12 @@ class PatientUpdateIn(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     preferred_language: Optional[Literal["EN", "TE"]] = None
+    marital_status: Optional[MARITAL_STATUSES] = None
+    height_cm: Optional[float] = Field(default=None, ge=20, le=300)
+    weight_kg: Optional[float] = Field(default=None, ge=1, le=500)
+    consulting_doctor_id: Optional[str] = None
+    sources: Optional[List[PATIENT_SOURCES]] = None
+    referral_name: Optional[str] = None
 
 
 class ReminderCreateIn(BaseModel):

@@ -1,5 +1,6 @@
 """Cases: CRUD + status transitions + clinical notes + prescriptions + follow-up."""
 import uuid
+from datetime import datetime, time, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
@@ -188,10 +189,16 @@ async def set_followup(
 ):
     c = await load_case_for_user(case_id, user)
     patient = await db.patients.find_one({"id": c["patient_id"]})
+    # Anchor the date-only follow-up to 09:00 IST of that day for scheduler delivery.
+    ist = timezone(timedelta(hours=5, minutes=30))
+    scheduled_dt = datetime.combine(payload.next_followup_date, time(9, 0, tzinfo=ist)).astimezone(timezone.utc)
+    scheduled_iso = scheduled_dt.isoformat()
+    followup_date_iso = payload.next_followup_date.isoformat()  # YYYY-MM-DD (display)
     await db.cases.update_one(
         {"id": case_id},
         {"$set": {
-            "next_followup_at": payload.next_followup_at.isoformat(),
+            "next_followup_at": scheduled_iso,        # kept for legacy/scheduler use
+            "next_followup_date": followup_date_iso,  # date-only for display
             "followup_note": payload.followup_note or "",
             "updated_at": now_utc().isoformat(),
         }},
@@ -202,12 +209,14 @@ async def set_followup(
         "patient_id": c["patient_id"],
         "patient_name": f"{patient['first_name']} {patient['last_name']}" if patient else "",
         "patient_uid": patient.get("patient_uid") if patient else "",
+        "patient_phone": patient.get("phone") if patient else "",
         "doctor_id": c["assigned_doctor_id"],
-        "scheduled_at": payload.next_followup_at.isoformat(),
+        "scheduled_at": scheduled_iso,
+        "scheduled_date": followup_date_iso,
         "message": payload.followup_note or "Follow-up due",
         "audience": ["DOCTOR", "PHARMACY"] if payload.notify_pharmacy else ["DOCTOR"],
         "status": "PENDING",
         "created_at": now_utc().isoformat(),
     })
-    await audit(user, "FOLLOWUP_SET", "Case", case_id, {"at": payload.next_followup_at.isoformat()})
-    return {"ok": True}
+    await audit(user, "FOLLOWUP_SET", "Case", case_id, {"date": followup_date_iso})
+    return {"ok": True, "scheduled_date": followup_date_iso}

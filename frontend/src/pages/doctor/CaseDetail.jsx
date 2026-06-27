@@ -4,7 +4,6 @@ import { api, fmtErr } from "@/lib/api";
 import StatusBadge from "@/components/StatusBadge";
 import { ArrowLeft, Loader2, Sparkles, Save, ArrowRight, Plus, Trash2, X } from "lucide-react";
 import AttachmentsTab from "@/components/AttachmentsTab";
-import { istLocalToUtcISO, utcISOToIstLocal } from "@/lib/api";
 
 const TABS = ["Notes", "Prescription", "Attachments", "Follow-up", "AI Assist"];
 
@@ -210,8 +209,9 @@ function PrescriptionTab({ caseId, latest, onSaved }) {
 }
 
 function FollowupTab({ caseData, onSaved }) {
-  const initial = caseData.next_followup_at ? utcISOToIstLocal(caseData.next_followup_at) : "";
-  const [at, setAt] = useState(initial);
+  const initialDate = caseData.next_followup_date
+    || (caseData.next_followup_at ? caseData.next_followup_at.slice(0, 10) : "");
+  const [followupDate, setFollowupDate] = useState(initialDate);
   const [note, setNote] = useState(caseData.followup_note || "");
   const [notifyPharmacy, setNotifyPharmacy] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -221,11 +221,11 @@ function FollowupTab({ caseData, onSaved }) {
     setBusy(true); setMsg("");
     try {
       await api.post(`/cases/${caseData.id}/followup`, {
-        next_followup_at: istLocalToUtcISO(at),
+        next_followup_date: followupDate,
         followup_note: note,
         notify_pharmacy: notifyPharmacy,
       });
-      setMsg(`Follow-up saved (IST). ${notifyPharmacy ? "Pharmacy notified." : "On-screen reminder scheduled."}`);
+      setMsg(`Follow-up scheduled for ${followupDate}. ${notifyPharmacy ? "Pharmacy notified." : "Reminder added."}`);
       onSaved();
     } catch (e) { setMsg(fmtErr(e)); }
     finally { setBusy(false); }
@@ -233,8 +233,8 @@ function FollowupTab({ caseData, onSaved }) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-md p-6 space-y-4 max-w-xl" data-testid="followup-tab">
-      <Field label="Next follow-up date / time (IST)">
-        <input type="datetime-local" className="input" value={at} onChange={(e) => setAt(e.target.value)} data-testid="followup-datetime" />
+      <Field label="Next follow-up date">
+        <input type="date" className="input" value={followupDate} onChange={(e) => setFollowupDate(e.target.value)} data-testid="followup-date" />
       </Field>
       <Field label="Note">
         <textarea rows={3} className="input" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -243,7 +243,7 @@ function FollowupTab({ caseData, onSaved }) {
         <input type="checkbox" checked={notifyPharmacy} onChange={(e) => setNotifyPharmacy(e.target.checked)} data-testid="notify-pharmacy" />
         Also notify pharmacy (will appear on their dashboard until completed)
       </label>
-      <button onClick={save} disabled={busy || !at} className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-md text-sm font-medium" data-testid="save-followup-btn">
+      <button onClick={save} disabled={busy || !followupDate} className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-md text-sm font-medium" data-testid="save-followup-btn">
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save follow-up
       </button>
       {msg && <div className="text-sm text-gray-500">{msg}</div>}

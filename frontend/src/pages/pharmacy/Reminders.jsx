@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, fmtErr, fmtIST } from "@/lib/api";
+import { api, fmtErr, fmtIST, fmtIST_date } from "@/lib/api";
 import { Loader2, BellRing, CheckCircle2, ClipboardList } from "lucide-react";
 
 export default function PharmacyReminders() {
@@ -52,7 +52,7 @@ export default function PharmacyReminders() {
               <div className="w-9 h-9 rounded-md bg-indigo-50 text-indigo-700 grid place-items-center shrink-0"><ClipboardList size={16} strokeWidth={1.5} /></div>
               <div className="flex-1">
                 <div className="font-medium text-gray-900 text-sm">{r.patient_name}</div>
-                <div className="text-xs text-gray-500 tabular-nums">{r.patient_uid} · {fmtIST(r.scheduled_at)}</div>
+                <div className="text-xs text-gray-500 tabular-nums">{r.patient_uid} · {r.scheduled_date ? new Date(r.scheduled_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : fmtIST_date(r.scheduled_at)}</div>
                 {r.message && <div className="text-xs text-gray-700 mt-1">{r.message}</div>}
                 {r.completed_at && <div className="text-[11px] text-emerald-700 mt-1">Completed {fmtIST(r.completed_at)} {r.completed_by_name ? `· by ${r.completed_by_name}` : ""}</div>}
               </div>

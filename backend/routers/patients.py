@@ -8,7 +8,14 @@ from core import (
     ROLE_RECEPTION, ROLE_OWNER_DOCTOR, ROLE_ADMIN, ROLE_DOCTOR, ROLE_PHARMACY,
     STATUS_CLOSED,
 )
-from models import PatientIn, PastVisitIn, PatientUpdateIn  # noqa: F401
+from models import PatientIn, PastVisitIn, PatientUpdateIn, FIRPatientIn  # noqa: F401
+
+
+def _compute_bmi(height_cm: float | None, weight_kg: float | None) -> float | None:
+    if not height_cm or not weight_kg or height_cm <= 0:
+        return None
+    h_m = height_cm / 100.0
+    return round(weight_kg / (h_m * h_m), 1)
 
 router = APIRouter()
 
@@ -44,10 +51,12 @@ async def create_patient(
 ):
     seq = await next_counter("patient_uid")
     patient_uid = f"SPARSA-{seq:06d}"
+    data = payload.model_dump()
+    data["bmi"] = _compute_bmi(data.get("height_cm"), data.get("weight_kg"))
     doc = {
         "id": str(uuid.uuid4()),
         "patient_uid": patient_uid,
-        **payload.model_dump(),
+        **data,
         "created_by": user["id"],
         "created_at": now_utc().isoformat(),
     }
@@ -55,6 +64,51 @@ async def create_patient(
     doc.pop("_id", None)
     await audit(user, "CREATE", "Patient", doc["id"], {"patient_uid": patient_uid})
     return {"patient": doc}
+
+
+@router.post("/patients/fir")
+async def create_patient_fir(
+    payload: FIRPatientIn,
+    user: dict = Depends(require_roles(ROLE_RECEPTION, ROLE_OWNER_DOCTOR, ROLE_ADMIN)),
+):
+    """First Information Report — create patient + initial case in one call."""
+    doctor = await db.doctor_profiles.find_one({"id": payload.consulting_doctor_id})
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Consulting doctor not found")
+    seq = await next_counter("patient_uid")
+    patient_uid = f"SPARSA-{seq:06d}"
+    data = payload.model_dump()
+    data["bmi"] = _compute_bmi(data.get("height_cm"), data.get("weight_kg"))
+    patient_id = str(uuid.uuid4())
+    patient_doc = {
+        "id": patient_id,
+        "patient_uid": patient_uid,
+        **data,
+        "created_by": user["id"],
+        "created_at": now_utc().isoformat(),
+    }
+    await db.patients.insert_one(patient_doc)
+    patient_doc.pop("_id", None)
+
+    case_seq = await next_counter("case_uid")
+    case_id = str(uuid.uuid4())
+    case_doc = {
+        "id": case_id,
+        "case_uid": f"CASE-{case_seq:06d}",
+        "patient_id": patient_id,
+        "assigned_doctor_id": payload.consulting_doctor_id,
+        "complaint_text": payload.chief_complaint,
+        "visit_type": payload.visit_type,
+        "status": "WAITING_FOR_DOCTOR",
+        "created_by": user["id"],
+        "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
+    }
+    await db.cases.insert_one(case_doc)
+    case_doc.pop("_id", None)
+    await audit(user, "CREATE", "Patient", patient_id, {"patient_uid": patient_uid, "via": "FIR"})
+    await audit(user, "CREATE", "Case", case_id, {"case_uid": case_doc["case_uid"], "via": "FIR"})
+    return {"patient": patient_doc, "case": case_doc}
 
 
 @router.get("/patients/{patient_id}")
@@ -77,6 +131,11 @@ async def update_patient(
     update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     if not update:
         raise HTTPException(status_code=400, detail="Nothing to update")
+    # Recompute BMI if height or weight changed
+    if "height_cm" in update or "weight_kg" in update:
+        h = update.get("height_cm", p.get("height_cm"))
+        w = update.get("weight_kg", p.get("weight_kg"))
+        update["bmi"] = _compute_bmi(h, w)
     update["updated_at"] = now_utc().isoformat()
     await db.patients.update_one({"id": patient_id}, {"$set": update})
     await audit(user, "UPDATE", "Patient", patient_id, {"fields": list(update.keys())})
