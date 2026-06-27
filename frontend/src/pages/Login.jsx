@@ -3,22 +3,34 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { fmtErr, roleHomePath } from "@/lib/api";
 import Logo from "@/components/Logo";
-import { Loader2 } from "lucide-react";
+import {
+  Loader2,
+  Leaf,
+  Users,
+  ShieldCheck,
+} from "lucide-react";
+
+import loginBg from "@/assets/images/pic.jpg";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
   const navigate = useNavigate();
 
-  if (user) return <Navigate to={roleHomePath(user.role)} replace />;
+  if (user)
+    return <Navigate to={roleHomePath(user.role)} replace />;
 
   const onSubmit = async (e) => {
     e.preventDefault();
+
     setErr("");
     setBusy(true);
+
     try {
       const u = await login(username.trim(), password);
       navigate(roleHomePath(u.role));
@@ -30,92 +42,233 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left: hero image with overlay */}
-      <div
-        className="hidden lg:flex flex-1 bg-cover bg-center relative"
-        style={{ backgroundImage: "url('https://images.pexels.com/photos/7789602/pexels-photo-7789602.jpeg')" }}
-        data-testid="login-hero"
-      >
-        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
-        <div className="relative z-10 p-12 flex flex-col justify-end">
-          <div className="max-w-md">
-            <div className="bg-white/90 backdrop-blur-sm rounded-lg p-4 inline-flex items-center gap-3 mb-6 shadow-sm">
-              <Logo size={56} />
-              <div className="text-[11px] uppercase tracking-[0.18em] text-gray-600 font-semibold leading-tight">
-                Internal<br />Workspace
-              </div>
-            </div>
-            <h1 className="font-display text-4xl font-semibold tracking-tight text-gray-900 leading-tight">
-              A calmer way to run your clinic.
+    <div
+      className="min-h-screen bg-cover bg-center relative overflow-hidden"
+      style={{
+        backgroundImage: `url(${loginBg})`,
+      }}
+    >
+      {/* Dark Overlay */}
+      <div className="absolute inset-0 bg-black/45" />
+
+      <div className="relative z-10 min-h-screen flex">
+
+        {/* LEFT SECTION */}
+        <div className="hidden lg:flex flex-1 flex-col px-16 py-14">
+
+          {/* Branding */}
+          <div className="flex flex-col items-start">
+
+            <Logo size={85} />
+
+            <h1
+              className="mt-5 text-[60px] xl:text-[68px] text-white font-semibold"
+              style={{
+                fontFamily: "'Cormorant Garamond', serif",
+              }}
+            >
+              Sparsha Homeo Care
             </h1>
-            <p className="text-gray-700 mt-4 text-base leading-relaxed">
-              Internal workflow for Reception, Doctors, Pharmacy and Billing — built for the way Dr. Jyothi Vani and Dr. Hemanth see patients every day.
+
+            <p className="mt-2 text-green-200 uppercase tracking-[0.35em] text-lg">
+              Clinical Management System
             </p>
+
+            <div className="flex items-center gap-4 mt-4">
+              <div className="w-28 h-[1px] bg-green-200/60" />
+              <div className="text-green-200">✦</div>
+              <div className="w-28 h-[1px] bg-green-200/60" />
+            </div>
+          </div>
+
+          {/* Hero Content */}
+          <div className="flex-1 flex flex-col justify-center">
+
+            <h2
+              className="text-[54px] leading-tight text-white"
+              style={{
+                fontFamily: "'Cormorant Garamond', serif",
+              }}
+            >
+              Compassionate Care.
+            </h2>
+
+            <h2
+              className="text-[54px] leading-tight text-[#9cff8a]"
+              style={{
+                fontFamily: "'Cormorant Garamond', serif",
+              }}
+            >
+              Natural Healing.
+            </h2>
+
+            <p className="mt-6 text-xl text-white/90 leading-10 max-w-xl">
+              A complete digital platform for managing patient
+              consultations, pharmacy operations, billing and
+              clinical workflows at Sparsha Homeo Care.
+            </p>
+
+            {/* Feature Cards */}
+            <div className="flex gap-8 mt-16">
+
+              {/* Card 1 */}
+              <div className="w-52 rounded-3xl bg-white/10 backdrop-blur-md border border-white/10 p-6 text-center">
+
+                <div className="w-16 h-16 rounded-full bg-green-900/50 flex items-center justify-center mx-auto">
+                  <Leaf className="text-green-300" size={30} />
+                </div>
+
+                <h3 className="mt-5 text-4xl font-bold text-white">
+                  100%
+                </h3>
+
+                <p className="mt-2 text-white/90">
+                  Homeopathic Care
+                </p>
+              </div>
+
+              {/* Card 2 */}
+              <div className="w-52 rounded-3xl bg-white/10 backdrop-blur-md border border-white/10 p-6 text-center">
+
+                <div className="w-16 h-16 rounded-full bg-green-900/50 flex items-center justify-center mx-auto">
+                  <Users className="text-green-300" size={30} />
+                </div>
+
+                <h3 className="mt-5 text-4xl font-bold text-white">
+                  24/7
+                </h3>
+
+                <p className="mt-2 text-white/90">
+                  Patient Records
+                </p>
+              </div>
+
+              {/* Card 3 */}
+              <div className="w-52 rounded-3xl bg-white/10 backdrop-blur-md border border-white/10 p-6 text-center">
+
+                <div className="w-16 h-16 rounded-full bg-green-900/50 flex items-center justify-center mx-auto">
+                  <ShieldCheck
+                    className="text-green-300"
+                    size={30}
+                  />
+                </div>
+
+                <h3 className="mt-5 text-4xl font-bold text-white">
+                  Secure
+                </h3>
+
+                <p className="mt-2 text-white/90">
+                  Clinical Workflow
+                </p>
+              </div>
+
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Right: login form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-white">
-        <div className="w-full max-w-sm">
-          <div className="flex items-center gap-3 mb-10">
-            <Logo size={56} />
-            <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-semibold leading-tight">
-              Internal<br />Workspace
-            </div>
-          </div>
+        {/* RIGHT LOGIN CARD */}
+        <div className="w-full lg:w-[42%] flex items-center justify-center p-8">
 
-          <h2 className="font-display text-2xl font-semibold text-gray-900 tracking-tight">Sign in</h2>
-          <p className="text-sm text-gray-500 mt-1 mb-8">Use your clinic credentials.</p>
+          <div className="w-full max-w-md rounded-[36px]
+                          bg-white/15 backdrop-blur-xl
+                          border border-white/20
+                          shadow-2xl p-10">
 
-          <form onSubmit={onSubmit} className="space-y-4" data-testid="login-form">
-            <div>
-              <label className="text-xs uppercase tracking-wider font-semibold text-gray-500 block mb-1.5">Username</label>
-              <input
-                type="text"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-md text-sm focus-ring"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoFocus
-                required
-                data-testid="login-username-input"
-              />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wider font-semibold text-gray-500 block mb-1.5">Password</label>
-              <input
-                type="password"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-md text-sm focus-ring"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                data-testid="login-password-input"
-              />
+            <div className="flex flex-col items-center mb-10">
+
+              <Logo size={70} />
+
+              <h2
+                className="mt-5 text-5xl text-white"
+                style={{
+                  fontFamily: "'Cormorant Garamond', serif",
+                }}
+              >
+                Welcome Back
+              </h2>
+
+              <p className="text-white/80 text-lg mt-2">
+                Sign in to your account
+              </p>
             </div>
 
-            {err && (
-              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2" data-testid="login-error">
-                {err}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-md transition-colors flex items-center justify-center gap-2"
-              data-testid="login-submit-button"
+            <form
+              onSubmit={onSubmit}
+              className="space-y-5"
             >
-              {busy && <Loader2 size={14} className="animate-spin" />}
-              Sign in
-            </button>
-          </form>
+              <div>
+                <label className="block text-xs uppercase tracking-widest text-white/80 mb-2 font-semibold">
+                  Username
+                </label>
 
-          <div className="mt-8 text-xs text-gray-500 border-t border-gray-100 pt-5">
-            <div className="text-gray-500 leading-relaxed">
-              Trouble signing in? Contact the clinic administrator to reset your credentials.
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) =>
+                    setUsername(e.target.value)
+                  }
+                  className="w-full rounded-xl px-5 py-4
+                            bg-white/90
+                            outline-none
+                            focus:ring-2
+                            focus:ring-green-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-widest text-white/80 mb-2 font-semibold">
+                  Password
+                </label>
+
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) =>
+                    setPassword(e.target.value)
+                  }
+                  className="w-full rounded-xl px-5 py-4
+                            bg-white/90
+                            outline-none
+                            focus:ring-2
+                            focus:ring-green-600"
+                  required
+                />
+              </div>
+
+              {err && (
+                <div className="text-red-700 bg-red-50 rounded-xl p-3 text-sm">
+                  {err}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full bg-[#06754f]
+                          hover:bg-[#045c3e]
+                          text-white py-4 rounded-xl
+                          text-lg font-semibold
+                          flex justify-center items-center gap-2"
+              >
+                {busy && (
+                  <Loader2
+                    size={18}
+                    className="animate-spin"
+                  />
+                )}
+
+                Sign In
+              </button>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-white/20 text-center text-white/80 text-sm">
+              Contact the clinic administrator if you are
+              unable to access your account.
             </div>
+
           </div>
+
         </div>
       </div>
     </div>
