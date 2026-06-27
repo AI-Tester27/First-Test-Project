@@ -42,7 +42,7 @@ async def list_patients(search: str = "", user: dict = Depends(get_current_user)
         ]}
     # RBAC: a non-owner DOCTOR may only see patients they have cases for.
     if user["role"] == ROLE_DOCTOR:
-        my_patient_ids = await db.cases.distinct("patient_id", {"assigned_doctor_id": user["id"]})
+        my_patient_ids = await db.cases.distinct("patient_id", {"assigned_doctor_id": user.get("doctor_id")})
         q = {"$and": [q, {"id": {"$in": my_patient_ids}}]} if q else {"id": {"$in": my_patient_ids}}
     patients = await db.patients.find(q, {"_id": 0}).sort("created_at", -1).limit(100).to_list(100)
     return {"patients": patients}

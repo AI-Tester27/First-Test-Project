@@ -46,6 +46,28 @@ Refactored 1154-line server.py into modular routers (core.py + models.py + 10 ro
 - Reusable `<Logo />` component (`/app/frontend/src/components/Logo.jsx`) as single source of truth.
 - Brand text harmonised to "Sparsa Homeo Care" in receipts, browser title, page meta, and WhatsApp/SMS reminder body.
 
+### v7 (Phase A — FIR + date-only follow-ups — iteration_7 ✅ 15/15)
+- **Patient model expanded**: marital_status, height_cm, weight_kg, **auto-BMI**, consulting_doctor_id, sources (multi-select), referral_name, chief_complaint, visit_type.
+- New endpoint `POST /api/patients/fir` creates patient + first case atomically.
+- Reception **New Patient** page rewritten as comprehensive FIR form (sectioned UI, conditional referral-name, BMI live-calc, walk-in/appointment radio).
+- **Follow-up changed to date-only**: `FollowupIn.next_followup_date: date`; anchored to 09:00 IST UTC for the scheduler. UI uses a `<input type="date">`.
+- Test data wiped per user's request; counters reset.
+
+### v8 (Phases B + C + D — iteration_8 ✅ 34/34 pytest)
+- **Phase B — Patient search & quick contact**:
+  - `GET /api/patients?search=…` now RBAC-scoped: non-owner DOCTOR only sees patients with cases assigned to them (uses `doctor_id`, not `user.id` — fixed).
+  - New `/doctor/patients` page (search + tap-to-call/SMS/WhatsApp quick-actions). Reusable `<QuickContact />` exported.
+  - Pharmacy + Doctor reminder cards and PRO follow-up widget now show phone number + QuickContact buttons.
+- **Phase C — PRO power features**:
+  - `GET /api/pro/financial-search?q=…` — global billing search; per-patient summary + per-visit table.
+  - `POST /api/cases/{id}/attachments` now accepts `kind=PAYMENT_PROOF`. PRO can upload payment proofs (UPI/PhonePe/GPay screenshots) before closing a bill. `?kind=PAYMENT_PROOF` filter on list endpoint.
+  - `GET /api/pro/analytics` — comprehensive business analytics (patient demographics, source acquisition, visits by doctor + type, 30-day revenue trend, mode breakdown, consult vs medicine split, operational turnaround, outstanding).
+  - New `/pro/financial-search` and `/pro/analytics` pages with bar charts.
+- **Phase D — Admin & AI**:
+  - Inline **Reset password** modal on Admin → Users (per-user). Backend enforces `min_length=8` on `UserCreateIn`/`UserUpdateIn`.
+  - AI Visit Recap now supports `?mode=detailed` (owner doctor / admin only) → Markdown response with 6 sections: Patient Profile, Clinical Assessment, Possible Diagnostic Directions, **Mother Tincture Suggestions**, Lifestyle Recommendations, Treatment Considerations + a "decision-support only" disclaimer. `mode=brief` (default) keeps the 5-line briefing.
+  - Tiny inline Markdown renderer in the timeline UI (avoids new dependency).
+
 ## Bring-your-own-key for AI (status)
 Currently uses Emergent Universal LLM key (Claude Sonnet 4.5). Provider abstraction is in `routers/ai.py::_call_llm`. To swap to direct OpenAI or Anthropic, set the appropriate env var and switch the model line — full BYOK admin UI is on the P1 backlog.
 

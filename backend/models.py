@@ -103,7 +103,7 @@ class PaymentIn(BaseModel):
 class UserCreateIn(BaseModel):
     username: str
     name: str
-    password: str
+    password: str = Field(min_length=8, max_length=128)
     role: Literal["ADMIN", "OWNER_DOCTOR", "DOCTOR", "RECEPTION", "PHARMACY", "PRO"]
     doctor_id: Optional[str] = None
 
@@ -112,7 +112,7 @@ class UserUpdateIn(BaseModel):
     name: Optional[str] = None
     role: Optional[str] = None
     active: Optional[bool] = None
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
 
 class PatientUpdateIn(BaseModel):
