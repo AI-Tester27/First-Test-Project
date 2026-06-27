@@ -19,10 +19,12 @@ const NAV_BY_ROLE = {
   OWNER_DOCTOR: [
     { to: "/doctor", label: "My Queue", icon: LayoutDashboard, end: true },
     { to: "/doctor/all", label: "All Cases", icon: FileText },
+    { to: "/doctor/patients", label: "Patients", icon: Users },
     { to: "/doctor/reminders", label: "Reminders", icon: ClipboardList },
   ],
   DOCTOR: [
     { to: "/doctor", label: "My Queue", icon: LayoutDashboard, end: true },
+    { to: "/doctor/patients", label: "My Patients", icon: Users },
     { to: "/doctor/reminders", label: "Reminders", icon: ClipboardList },
   ],
   RECEPTION: [
@@ -36,6 +38,8 @@ const NAV_BY_ROLE = {
   ],
   PRO: [
     { to: "/pro", label: "Billing Queue", icon: ReceiptText, end: true },
+    { to: "/pro/financial-search", label: "Financial Search", icon: Users },
+    { to: "/pro/analytics", label: "Analytics", icon: FileText },
   ],
 };
 

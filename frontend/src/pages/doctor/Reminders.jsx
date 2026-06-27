@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtErr, fmtIST, fmtIST_date, utcISOToIstLocal, istLocalToUtcISO } from "@/lib/api";
+import { QuickContact } from "@/pages/doctor/Patients";
 import { Loader2, BellRing, Calendar, CheckCircle2, Clock, Send, Trash2, AlarmClock } from "lucide-react";
 
 const STATUS_TABS = [
@@ -116,6 +117,12 @@ export default function DoctorReminders() {
                   <span className={STATUS_PILLS[r.status] || "pill pill-waiting"} data-testid={`status-${r.id}`}>{r.status}</span>
                 </div>
                 <div className="text-xs text-gray-600 mt-1 tabular-nums">{r.scheduled_date ? new Date(r.scheduled_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : fmtIST_date(r.scheduled_at)}</div>
+                {r.patient_phone && (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-xs text-gray-600 tabular-nums">{r.patient_phone}</span>
+                    <QuickContact phone={r.patient_phone} name={r.patient_name} message={r.message ? `Hi ${r.patient_name}, ${r.message}` : undefined} />
+                  </div>
+                )}
                 {r.message && <div className="text-xs text-gray-700 mt-1">{r.message}</div>}
                 {r.completed_at && <div className="text-[11px] text-emerald-700 mt-1">Completed {fmtIST(r.completed_at)} {r.completed_by_name ? `· by ${r.completed_by_name}` : ""}</div>}
                 {r.fail_reason && <div className="text-[11px] text-red-700 mt-1">Failed: {r.fail_reason}</div>}

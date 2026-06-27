@@ -1,11 +1,50 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import StatusBadge, { PaymentBadge } from "@/components/StatusBadge";
 import { ArrowLeft, Loader2, FileText, Pill, ReceiptText, Paperclip, Calendar, Sparkles, X, FilePlus } from "lucide-react";
 
+function Markdown({ source }) {
+  // Minimal markdown → JSX renderer for AI output (headings, bullets, bold).
+  const lines = (source || "").split("\n");
+  const out = [];
+  let listBuf = [];
+  const flushList = () => {
+    if (listBuf.length) {
+      out.push(<ul key={out.length} className="list-disc pl-5 space-y-0.5">{listBuf.map((t, i) => <li key={i}>{inline(t)}</li>)}</ul>);
+      listBuf = [];
+    }
+  };
+  const inline = (txt) => {
+    const parts = [];
+    let i = 0; let key = 0;
+    txt.replace(/\*\*(.+?)\*\*/g, (m, b, idx) => {
+      if (idx > i) parts.push(txt.slice(i, idx));
+      parts.push(<strong key={key++}>{b}</strong>);
+      i = idx + m.length;
+      return m;
+    });
+    if (i < txt.length) parts.push(txt.slice(i));
+    return parts.length ? parts : txt;
+  };
+  for (const raw of lines) {
+    const l = raw.trimEnd();
+    if (/^##\s+/.test(l)) { flushList(); out.push(<h2 key={out.length}>{l.replace(/^##\s+/, "")}</h2>); }
+    else if (/^#\s+/.test(l)) { flushList(); out.push(<h2 key={out.length}>{l.replace(/^#\s+/, "")}</h2>); }
+    else if (/^[-*]\s+/.test(l)) { listBuf.push(l.replace(/^[-*]\s+/, "")); }
+    else if (l.trim() === "") { flushList(); }
+    else { flushList(); out.push(<p key={out.length}>{inline(l)}</p>); }
+  }
+  flushList();
+  return <>{out}</>;
+}
+
 export default function PatientTimeline() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const isDoctor = user?.role === "DOCTOR" || user?.role === "OWNER_DOCTOR";
+  const basePath = isDoctor ? "/doctor" : "/reception";
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [recap, setRecap] = useState(null);
@@ -19,10 +58,10 @@ export default function PatientTimeline() {
     })();
   }, [id]);
 
-  const runRecap = async () => {
+  const runRecap = async (mode = "brief") => {
     setRecapBusy(true); setRecapErr(""); setRecap(null);
     try {
-      const { data } = await api.post(`/patients/${id}/ai/recap`);
+      const { data } = await api.post(`/patients/${id}/ai/recap?mode=${mode}`);
       setRecap(data);
     } catch (e) { setRecapErr(fmtErr(e)); }
     finally { setRecapBusy(false); }
@@ -35,7 +74,7 @@ export default function PatientTimeline() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto" data-testid="patient-timeline">
-      <Link to="/reception/patients" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3">
+      <Link to={`${basePath}/patients`} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3">
         <ArrowLeft size={14} /> Back to patients
       </Link>
       <div className="bg-white border border-gray-200 rounded-md p-6 mb-6">
@@ -54,23 +93,38 @@ export default function PatientTimeline() {
           <span className="text-xs text-gray-500 tabular-nums ml-1">({data.timeline.length})</span>
         </div>
         <div className="flex gap-2">
-          <Link
-            to={`/reception/patients/${id}/past-visit`}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-teal-600 text-gray-900 rounded-md text-sm font-medium"
-            data-testid="add-past-visit-btn"
-          >
-            <FilePlus size={14} strokeWidth={1.5} /> Add past visit
-          </Link>
-          {data.timeline.length > 0 && (
-            <button
-              onClick={runRecap}
-              disabled={recapBusy}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-teal-700 to-teal-600 hover:from-teal-800 hover:to-teal-700 disabled:opacity-60 text-white rounded-md text-sm font-medium shadow-sm"
-              data-testid="ai-recap-btn"
+          {!isDoctor && (
+            <Link
+              to={`/reception/patients/${id}/past-visit`}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-teal-600 text-gray-900 rounded-md text-sm font-medium"
+              data-testid="add-past-visit-btn"
             >
-              {recapBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={1.5} />}
-              AI Visit Recap
-            </button>
+              <FilePlus size={14} strokeWidth={1.5} /> Add past visit
+            </Link>
+          )}
+          {data.timeline.length > 0 && (
+            <>
+              <button
+                onClick={() => runRecap("brief")}
+                disabled={recapBusy}
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-teal-200 hover:border-teal-600 text-teal-800 disabled:opacity-60 rounded-md text-sm font-medium"
+                data-testid="ai-recap-btn"
+              >
+                {recapBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={1.5} />}
+                AI 5-line briefing
+              </button>
+              {user?.role === "OWNER_DOCTOR" && (
+                <button
+                  onClick={() => runRecap("detailed")}
+                  disabled={recapBusy}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-teal-700 to-teal-600 hover:from-teal-800 hover:to-teal-700 disabled:opacity-60 text-white rounded-md text-sm font-medium shadow-sm"
+                  data-testid="ai-detailed-btn"
+                >
+                  {recapBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={1.5} />}
+                  Comprehensive analysis
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -81,12 +135,23 @@ export default function PatientTimeline() {
           <div className="flex items-center gap-2 mb-2">
             <Sparkles size={14} strokeWidth={1.5} className="text-teal-700" />
             <div className="text-xs uppercase tracking-wider font-semibold text-teal-800">
-              5-line AI briefing {recap?.visits_analysed ? <span className="text-gray-500 tabular-nums">· {recap.visits_analysed} visits analysed</span> : null}
+              {recap?.mode === "detailed" ? "Comprehensive AI analysis" : "5-line AI briefing"}
+              {recap?.visits_analysed ? <span className="text-gray-500 tabular-nums"> · {recap.visits_analysed} visits analysed</span> : null}
             </div>
           </div>
           {recapBusy && <div className="text-sm text-gray-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Reading visit history…</div>}
           {recapErr && <div className="text-sm text-red-700">{recapErr}</div>}
-          {recap?.result && <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed" data-testid="recap-result">{recap.result}</div>}
+          {recap?.result && (
+            <div className={`text-sm text-gray-800 leading-relaxed ${recap.mode === "detailed" ? "prose prose-sm max-w-none prose-headings:font-display prose-headings:text-teal-900 prose-h2:text-base prose-h2:font-semibold prose-h2:mt-4 prose-h2:mb-2 prose-p:my-1 prose-ul:my-1 prose-li:my-0" : "whitespace-pre-wrap"}`} data-testid="recap-result">
+              {recap.mode === "detailed" ? <Markdown source={recap.result} /> : recap.result}
+            </div>
+          )}
+          {recap?.mode === "detailed" && (
+            <div className="mt-4 px-3 py-2 rounded border border-amber-300 bg-amber-50 text-[11px] text-amber-900 leading-relaxed" data-testid="ai-disclaimer">
+              <strong>For doctor review only.</strong> AI-generated mother-tincture suggestions and possible diagnoses are decision-support
+              prompts — not prescriptions. Confirm dosage, potency and clinical fit before sharing with the patient.
+            </div>
+          )}
         </div>
       )}
 

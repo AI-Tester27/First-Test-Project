@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, fmtErr } from "@/lib/api";
 import StatusBadge, { PaymentBadge } from "@/components/StatusBadge";
-import { ArrowLeft, Loader2, Save, Printer, CheckCircle2, User, ListChecks } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Printer, CheckCircle2, User, ListChecks, Upload, FileImage, Trash2 } from "lucide-react";
 
 export default function BillingDetail() {
   const { id } = useParams();
@@ -188,8 +188,86 @@ export default function BillingDetail() {
           <Row label="Balance" value={balance} bold />
         </div>
       </div>
+
+      <PaymentProofPanel caseId={c.id} />
       <style>{`.input { width:100%; padding:0.5rem 0.75rem; border:1px solid #e5e7eb; border-radius:0.375rem; font-size:0.875rem; outline:none; }
       .input:focus { border-color:#0F766E; box-shadow: 0 0 0 3px rgba(15,118,110,.18); }`}</style>
+    </div>
+  );
+}
+
+function PaymentProofPanel({ caseId }) {
+  const [proofs, setProofs] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const inputRef = useRef(null);
+
+  const load = async () => {
+    try {
+      const { data } = await api.get(`/cases/${caseId}/attachments?kind=PAYMENT_PROOF`);
+      setProofs(data.attachments || []);
+    } catch (e) { setErr(fmtErr(e)); }
+  };
+  useEffect(() => { load(); }, [caseId]);
+
+  const onFile = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setUploading(true); setErr("");
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("kind", "PAYMENT_PROOF");
+      await api.post(`/cases/${caseId}/attachments`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await load();
+    } catch (e2) { setErr(fmtErr(e2)); }
+    finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const remove = async (a) => {
+    if (!window.confirm("Remove this payment proof?")) return;
+    try { await api.delete(`/attachments/${a.id}`); load(); }
+    catch (e) { setErr(fmtErr(e)); }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-md p-6 mt-6" data-testid="payment-proof-panel">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-display text-sm font-semibold text-gray-900">Payment proof <span className="text-gray-400 font-normal">(optional)</span></h3>
+          <p className="text-xs text-gray-500 mt-0.5">Upload a screenshot of the UPI / PhonePe / GPay confirmation. Stored against this case.</p>
+        </div>
+        <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 hover:border-teal-600 rounded-md text-sm font-medium cursor-pointer" data-testid="upload-proof-btn">
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          Upload proof
+          <input ref={inputRef} type="file" accept="image/*,.pdf" onChange={onFile} className="hidden" disabled={uploading} data-testid="proof-file-input" />
+        </label>
+      </div>
+      {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-3">{err}</div>}
+      {proofs.length === 0 ? (
+        <div className="text-sm text-gray-400 py-4">No payment proof uploaded yet.</div>
+      ) : (
+        <ul className="divide-y divide-gray-100" data-testid="proof-list">
+          {proofs.map((p) => (
+            <li key={p.id} className="flex items-center justify-between py-2.5" data-testid={`proof-${p.id}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded bg-teal-50 text-teal-700 grid place-items-center shrink-0"><FileImage size={14} /></div>
+                <div className="min-w-0">
+                  <div className="text-sm text-gray-900 truncate">{p.original_filename}</div>
+                  <div className="text-[11px] text-gray-500 tabular-nums">{new Date(p.created_at).toLocaleString()} · {(p.size_bytes / 1024).toFixed(0)} KB · by {p.uploaded_by_name || "—"}</div>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <a href={`${process.env.REACT_APP_BACKEND_URL}/api/attachments/${p.id}/download`} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1.5 border border-gray-200 rounded hover:border-teal-600 hover:text-teal-700">View</a>
+                <button onClick={() => remove(p)} className="text-xs px-2.5 py-1.5 border border-gray-200 rounded hover:border-red-500 hover:text-red-600 inline-flex items-center gap-1" data-testid={`del-proof-${p.id}`}><Trash2 size={12} /></button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -1,22 +1,30 @@
 """File attachments via Emergent Object Storage."""
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response
 
 from core import (
     db, now_utc, audit, get_current_user, require_roles, load_case_for_user,
-    ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN,
+    ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN, ROLE_PRO,
 )
 from storage import put_object, get_object, ALLOWED_EXTS, MIME_TYPES, MAX_BYTES, APP_NAME
 
 router = APIRouter()
+
+ALLOWED_KINDS = {"GENERAL", "PAYMENT_PROOF"}
 
 
 @router.post("/cases/{case_id}/attachments")
 async def upload_attachment(
     case_id: str,
     file: UploadFile = File(...),
-    user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN)),
+    kind: str = Form("GENERAL"),
+    user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_ADMIN, ROLE_PRO)),
 ):
+    if kind not in ALLOWED_KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {sorted(ALLOWED_KINDS)}")
+    # PRO can only upload PAYMENT_PROOF; clinicians/reception/admin can upload any kind.
+    if user["role"] == ROLE_PRO and kind != "PAYMENT_PROOF":
+        raise HTTPException(status_code=403, detail="PRO can only upload PAYMENT_PROOF attachments")
     c = await load_case_for_user(case_id, user)
     fname = file.filename or "upload"
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
@@ -49,6 +57,7 @@ async def upload_attachment(
         "id": str(uuid.uuid4()),
         "case_id": case_id,
         "patient_id": c["patient_id"],
+        "kind": kind,
         "storage_path": result.get("path") or path,
         "original_filename": fname,
         "content_type": content_type,
@@ -60,16 +69,19 @@ async def upload_attachment(
     }
     await db.attachments.insert_one(record)
     record.pop("_id", None)
-    await audit(user, "ATTACHMENT_UPLOAD", "Attachment", record["id"], {"filename": fname, "size": len(data)})
+    await audit(user, "ATTACHMENT_UPLOAD", "Attachment", record["id"], {"filename": fname, "size": len(data), "kind": kind})
     return {"attachment": record}
 
 
 @router.get("/cases/{case_id}/attachments")
-async def list_attachments(case_id: str, user: dict = Depends(get_current_user)):
+async def list_attachments(case_id: str, kind: str | None = None, user: dict = Depends(get_current_user)):
     await load_case_for_user(case_id, user)
-    files = await db.attachments.find(
-        {"case_id": case_id, "is_deleted": False}, {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
+    q = {"case_id": case_id, "is_deleted": False}
+    if kind:
+        if kind not in ALLOWED_KINDS:
+            raise HTTPException(status_code=400, detail="Invalid kind")
+        q["kind"] = kind
+    files = await db.attachments.find(q, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"attachments": files}
 
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtErr, fmtIST } from "@/lib/api";
 import StatusBadge from "@/components/StatusBadge";
+import { QuickContact } from "@/pages/doctor/Patients";
 import { Loader2, ChevronRight, ReceiptText, IndianRupee, AlertCircle, Users, Calendar, TrendingUp } from "lucide-react";
 
 const MAX_BAR_VALUE = (trend) => Math.max(1, ...trend.map((t) => t.revenue || 0));
@@ -152,7 +153,13 @@ export default function ProDashboard() {
               {stats.followups_today.map((r) => (
                 <div key={r.id} className="p-3" data-testid={`followup-${r.id}`}>
                   <div className="text-sm font-medium text-gray-900">{r.patient_name}</div>
-                  <div className="text-xs text-gray-500 tabular-nums">{r.patient_uid} · {fmtIST(r.scheduled_at)}</div>
+                  <div className="text-xs text-gray-500 tabular-nums">{r.patient_uid} · {r.scheduled_date ? new Date(r.scheduled_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : fmtIST(r.scheduled_at)}</div>
+                  {r.patient_phone && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs text-gray-600 tabular-nums">{r.patient_phone}</span>
+                      <QuickContact phone={r.patient_phone} name={r.patient_name} />
+                    </div>
+                  )}
                   {r.message && <div className="text-xs text-gray-700 mt-1 line-clamp-2">{r.message}</div>}
                 </div>
               ))}

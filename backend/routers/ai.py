@@ -94,9 +94,17 @@ async def ai_assist(
 @router.post("/patients/{patient_id}/ai/recap")
 async def ai_visit_recap(
     patient_id: str,
+    mode: str = "brief",
     user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_ADMIN)),
 ):
-    """Generate a 5-line briefing of the patient's full visit history for the doctor."""
+    """Generate a briefing of the patient's full visit history for the doctor.
+    mode='brief' (default) → 5-line bullet briefing.
+    mode='detailed' → comprehensive structured analysis (owner doctor / admin only)."""
+    if mode not in ("brief", "detailed"):
+        raise HTTPException(status_code=400, detail="mode must be 'brief' or 'detailed'")
+    if mode == "detailed" and user["role"] not in (ROLE_OWNER_DOCTOR, ROLE_ADMIN):
+        raise HTTPException(status_code=403, detail="Detailed analysis is restricted to owner doctor / admin")
+
     patient = await db.patients.find_one({"id": patient_id}, {"_id": 0})
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -109,10 +117,13 @@ async def ai_visit_recap(
         raise HTTPException(status_code=404, detail="No accessible visits for this patient")
 
     # Build a compact, chronological narrative
+    bmi_str = f"{patient.get('bmi')}" if patient.get('bmi') else "—"
     lines = [
         f"Patient: {patient.get('first_name', '')} {patient.get('last_name', '')}, "
         f"{patient.get('gender', '?')}, age {patient.get('age', '?')}. "
-        f"UID: {patient.get('patient_uid', '')}. Total visits: {len(cases)}."
+        f"UID: {patient.get('patient_uid', '')}. Total visits: {len(cases)}.",
+        f"Height: {patient.get('height_cm') or '—'} cm, Weight: {patient.get('weight_kg') or '—'} kg, BMI: {bmi_str}.",
+        f"Marital status: {patient.get('marital_status') or '—'}. Language: {patient.get('preferred_language') or 'EN'}.",
     ]
     for i, c in enumerate(cases, 1):
         when = c.get("created_at", "")[:10]
@@ -121,37 +132,65 @@ async def ai_visit_recap(
         med_list = ", ".join([(it.get("medicine_name") or "") + " " + (it.get("potency") or "")
                               for it in ((rx[0] if rx else {}).get("items") or [])]).strip(", ") or "—"
         lines.append(
-            f"Visit {i} ({when}): Complaint: {c.get('complaint_text', '')[:120]}\n"
-            f"  Diagnosis: {((note or {}).get('diagnosis_summary') or '—')[:160]}\n"
+            f"Visit {i} ({when}): Complaint: {c.get('complaint_text', '')[:200]}\n"
+            f"  Diagnosis: {((note or {}).get('diagnosis_summary') or '—')[:200]}\n"
             f"  Allergies: {((note or {}).get('sensitivity_allergies') or '—')[:120]}\n"
-            f"  Rx: {med_list[:200]}"
+            f"  Rx: {med_list[:240]}"
         )
     narrative = "\n".join(lines)
 
     lang = patient.get("preferred_language", "EN")
-    lang_note = "Write briefing in clear English." if lang != "TE" else "Write briefing in clear English (NOT Telugu — for the doctor's quick scan)."
-    system = (
-        "You are a clinical assistant briefing a homeopathy doctor before they see a returning patient. "
-        "Read the chronological visit history and produce EXACTLY 5 short bullet lines that help the doctor "
-        "make the next decision quickly. Use this structure: "
-        "(1) Pattern across visits, "
-        "(2) What seemed to help, "
-        "(3) What didn't help / red flags, "
-        "(4) Allergies & cautions, "
-        "(5) Suggested focus for today's consultation. "
-        "Avoid definitive diagnosis. Use cautious 'may/possible' phrasing. "
-        f"{lang_note} Keep every bullet under 20 words."
-    )
+    if mode == "brief":
+        lang_note = "Write briefing in clear English." if lang != "TE" else "Write briefing in clear English (NOT Telugu — for the doctor's quick scan)."
+        system = (
+            "You are a clinical assistant briefing a homeopathy doctor before they see a returning patient. "
+            "Read the chronological visit history and produce EXACTLY 5 short bullet lines that help the doctor "
+            "make the next decision quickly. Use this structure: "
+            "(1) Pattern across visits, "
+            "(2) What seemed to help, "
+            "(3) What didn't help / red flags, "
+            "(4) Allergies & cautions, "
+            "(5) Suggested focus for today's consultation. "
+            "Avoid definitive diagnosis. Use cautious 'may/possible' phrasing. "
+            f"{lang_note} Keep every bullet under 20 words."
+        )
+    else:  # detailed
+        system = (
+            "You are a senior homeopathy clinical assistant preparing a comprehensive decision-support "
+            "briefing for an experienced doctor. Read the full patient history below and produce a "
+            "well-structured Markdown response with EXACTLY these sections, in this order:\n\n"
+            "## 1. Patient Profile Summary\n"
+            "A 2-3 sentence portrait covering demographics, build (BMI), and overall trajectory.\n\n"
+            "## 2. Clinical Assessment\n"
+            "Identify the recurring complaint patterns, time course, severity changes, and any concerning trends.\n\n"
+            "## 3. Possible Diagnostic Directions\n"
+            "List 2-4 possible diagnoses in order of likelihood, using cautious 'may suggest / possible' "
+            "language. Briefly justify each from the history.\n\n"
+            "## 4. Mother Tincture Suggestions\n"
+            "Suggest 2-4 candidate homeopathic mother tinctures (Q potency) that align with the symptom "
+            "picture and constitution, with a one-line rationale each. Use standard names "
+            "(e.g. Belladonna Q, Bryonia Q). DO NOT prescribe dosage or duration — that is the doctor's call.\n\n"
+            "## 5. Lifestyle Recommendations\n"
+            "Three to five practical, India-context lifestyle/diet suggestions tailored to this patient.\n\n"
+            "## 6. Treatment Considerations\n"
+            "Highlight allergies, interactions to avoid, red flags warranting referral or labs, and follow-up cadence.\n\n"
+            "## ⚠️ Disclaimer\n"
+            "End with: 'This AI-generated analysis is decision-support only — for review by the treating doctor. "
+            "Do not share with the patient without verification.'\n\n"
+            "Style: concise, professional, use bullet lists inside each section. Total response should be "
+            "around 350-500 words. Write in English."
+        )
+
     try:
-        result = await _call_llm(system, narrative, f"recap-{patient_id}")
+        result = await _call_llm(system, narrative, f"recap-{mode}-{patient_id}")
     except HTTPException:
         raise
     except Exception as e:
         log.exception("AI recap error")
         raise HTTPException(status_code=502, detail=f"AI service error: {e}") from e
 
-    await audit(user, "AI_USED", "Patient", patient_id, {"action": "recap", "visits": len(cases)})
-    return {"result": result, "visits_analysed": len(cases)}
+    await audit(user, "AI_USED", "Patient", patient_id, {"action": "recap", "mode": mode, "visits": len(cases)})
+    return {"result": result, "visits_analysed": len(cases), "mode": mode}
 
 
 @router.post("/ai/parse-visit-notes")

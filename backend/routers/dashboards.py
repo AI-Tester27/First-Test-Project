@@ -106,10 +106,15 @@ async def pro_dashboard(user: dict = Depends(require_roles(ROLE_PRO, ROLE_OWNER_
         if is_clinician:
             followup_items.append(r)
         else:
-            # PRO viewers see scheduling info but not private clinical notes
+            # PRO viewers see patient name, ID, phone, scheduled date — NO clinical notes.
             followup_items.append({
-                "id": r.get("id"), "patient_name": r.get("patient_name"), "patient_uid": r.get("patient_uid"),
-                "scheduled_at": r.get("scheduled_at"), "status": r.get("status"),
+                "id": r.get("id"),
+                "patient_name": r.get("patient_name"),
+                "patient_uid": r.get("patient_uid"),
+                "patient_phone": r.get("patient_phone"),
+                "scheduled_at": r.get("scheduled_at"),
+                "scheduled_date": r.get("scheduled_date"),
+                "status": r.get("status"),
             })
 
     return {
@@ -241,4 +246,194 @@ async def admin_analytics(user: dict = Depends(require_roles(ROLE_ADMIN, ROLE_OW
         "top_complaints": top_complaints,
         "avg_turnaround_minutes": avg_turnaround_min,
         "closed_cases_30d": closed_cases_30d,
+    }
+
+
+
+@router.get("/pro/analytics")
+async def pro_analytics(user: dict = Depends(require_roles(ROLE_PRO, ROLE_OWNER_DOCTOR, ROLE_ADMIN))):
+    """Comprehensive business analytics for the PRO/Owner."""
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(ist).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_today, end_today = _today_bounds_utc()
+    start_7d = (now_ist - timedelta(days=7)).astimezone(timezone.utc).isoformat()
+    start_30d = (now_ist - timedelta(days=30)).astimezone(timezone.utc).isoformat()
+
+    # ── PATIENT METRICS ──────────────────────────────────────────────────
+    total_patients = await db.patients.count_documents({})
+    new_today = await db.patients.count_documents({"created_at": {"$gte": start_today, "$lt": end_today}})
+    new_7d = await db.patients.count_documents({"created_at": {"$gte": start_7d}})
+    new_30d = await db.patients.count_documents({"created_at": {"$gte": start_30d}})
+    by_gender_agg = await db.patients.aggregate([
+        {"$group": {"_id": "$gender", "count": {"$sum": 1}}},
+    ]).to_list(10)
+    by_gender = {a["_id"]: a["count"] for a in by_gender_agg if a.get("_id")}
+
+    age_buckets = await db.patients.aggregate([
+        {"$bucket": {
+            "groupBy": "$age",
+            "boundaries": [0, 13, 25, 45, 60, 150],
+            "default": "Unknown",
+            "output": {"count": {"$sum": 1}},
+        }},
+    ]).to_list(10)
+    labels = ["0-12", "13-24", "25-44", "45-59", "60+"]
+    age_groups = {label: 0 for label in labels}
+    for b in age_buckets:
+        boundary = b.get("_id")
+        if boundary == 0:
+            age_groups["0-12"] = b["count"]
+        elif boundary == 13:
+            age_groups["13-24"] = b["count"]
+        elif boundary == 25:
+            age_groups["25-44"] = b["count"]
+        elif boundary == 45:
+            age_groups["45-59"] = b["count"]
+        elif boundary == 60:
+            age_groups["60+"] = b["count"]
+
+    src_agg = await db.patients.aggregate([
+        {"$match": {"created_at": {"$gte": start_30d}}},
+        {"$unwind": {"path": "$sources", "preserveNullAndEmptyArrays": False}},
+        {"$group": {"_id": "$sources", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]).to_list(20)
+    sources_30d = [{"source": a["_id"], "count": a["count"]} for a in src_agg]
+
+    # ── VISIT METRICS ────────────────────────────────────────────────────
+    total_visits = await db.cases.count_documents({})
+    visits_today = await db.cases.count_documents({"created_at": {"$gte": start_today, "$lt": end_today}})
+    visits_7d = await db.cases.count_documents({"created_at": {"$gte": start_7d}})
+    visits_30d = await db.cases.count_documents({"created_at": {"$gte": start_30d}})
+    by_visit_type_agg = await db.cases.aggregate([
+        {"$match": {"created_at": {"$gte": start_30d}}},
+        {"$group": {"_id": "$visit_type", "count": {"$sum": 1}}},
+    ]).to_list(5)
+    by_visit_type = {(a["_id"] or "UNKNOWN"): a["count"] for a in by_visit_type_agg}
+
+    by_doctor_agg = await db.cases.aggregate([
+        {"$match": {"created_at": {"$gte": start_30d}}},
+        {"$group": {"_id": "$assigned_doctor_id", "count": {"$sum": 1}}},
+    ]).to_list(10)
+    docs_list = await db.doctor_profiles.find({}).to_list(50)
+    docs_map = {d["id"]: d.get("display_name", d["id"]) for d in docs_list}
+    cases_by_doctor_30d = [{"doctor": docs_map.get(b["_id"], b["_id"] or "Unassigned"), "count": b["count"]} for b in by_doctor_agg]
+
+    # ── REVENUE METRICS ──────────────────────────────────────────────────
+    revenue_total_agg = await db.payments.aggregate([
+        {"$match": {"payment_status": "PAID"}},
+        {"$group": {"_id": None, "billed": {"$sum": "$total_amount"}, "paid": {"$sum": "$amount_paid"}}},
+    ]).to_list(1)
+    rev_total = revenue_total_agg[0] if revenue_total_agg else {"billed": 0, "paid": 0}
+
+    revenue_today_agg = await db.payments.aggregate([
+        {"$match": {"updated_at": {"$gte": start_today, "$lt": end_today}, "payment_status": "PAID"}},
+        {"$group": {"_id": None, "amount": {"$sum": "$amount_paid"}}},
+    ]).to_list(1)
+    revenue_today = revenue_today_agg[0]["amount"] if revenue_today_agg else 0
+
+    revenue_30d_agg = await db.payments.aggregate([
+        {"$match": {"updated_at": {"$gte": start_30d}, "payment_status": "PAID"}},
+        {"$group": {"_id": None, "amount": {"$sum": "$amount_paid"}}},
+    ]).to_list(1)
+    revenue_30d = revenue_30d_agg[0]["amount"] if revenue_30d_agg else 0
+
+    by_mode_30d = await db.payments.aggregate([
+        {"$match": {"updated_at": {"$gte": start_30d}, "payment_status": {"$in": ["PAID", "PARTIAL"]}}},
+        {"$group": {"_id": "$payment_mode", "amount": {"$sum": "$amount_paid"}, "n": {"$sum": 1}}},
+    ]).to_list(10)
+    mode_breakdown = [{"mode": a["_id"] or "UNKNOWN", "amount": a["amount"], "count": a["n"]} for a in by_mode_30d]
+
+    consult_med_split = await db.payments.aggregate([
+        {"$match": {"payment_status": {"$in": ["PAID", "PARTIAL"]}, "updated_at": {"$gte": start_30d}}},
+        {"$group": {"_id": None,
+                    "consultation": {"$sum": "$consultation_amount"},
+                    "medicine": {"$sum": "$medicine_amount"}}},
+    ]).to_list(1)
+    cm_split = consult_med_split[0] if consult_med_split else {"consultation": 0, "medicine": 0}
+
+    revenue_trend_pipeline = [
+        {"$match": {"updated_at": {"$gte": start_30d}, "payment_status": "PAID"}},
+        {"$group": {
+            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$dateAdd": {
+                "startDate": {"$dateFromString": {"dateString": "$updated_at"}},
+                "unit": "minute", "amount": 330,
+            }}}},
+            "amount": {"$sum": "$amount_paid"},
+        }},
+    ]
+    rev_buckets = await db.payments.aggregate(revenue_trend_pipeline).to_list(60)
+    rev_map = {b["_id"]: b["amount"] for b in rev_buckets if b["_id"]}
+    revenue_trend_30d = []
+    for i in range(29, -1, -1):
+        day = now_ist - timedelta(days=i)
+        key = day.strftime("%Y-%m-%d")
+        revenue_trend_30d.append({"date": key, "label": day.strftime("%d %b"), "amount": rev_map.get(key, 0)})
+
+    # ── OPERATIONAL METRICS ──────────────────────────────────────────────
+    turnaround_pipeline = [
+        {"$match": {
+            "status": STATUS_CLOSED,
+            "closed_at": {"$gte": start_30d},
+            "consultation_started_at": {"$exists": True, "$ne": None},
+        }},
+        {"$project": {"_id": 0, "duration_min": {"$divide": [
+            {"$subtract": [
+                {"$dateFromString": {"dateString": "$closed_at"}},
+                {"$dateFromString": {"dateString": "$consultation_started_at"}},
+            ]},
+            60000,
+        ]}}},
+        {"$group": {"_id": None, "avg": {"$avg": "$duration_min"}, "n": {"$sum": 1}}},
+    ]
+    t_agg = await db.cases.aggregate(turnaround_pipeline).to_list(1)
+    avg_turnaround_min = round(t_agg[0]["avg"], 1) if t_agg and t_agg[0].get("avg") is not None else 0
+    closed_30d = t_agg[0]["n"] if t_agg else 0
+
+    # ── FINANCIAL METRICS ────────────────────────────────────────────────
+    outstanding_agg = await db.payments.aggregate([
+        {"$match": {"balance_amount": {"$gt": 0}}},
+        {"$group": {"_id": None, "total": {"$sum": "$balance_amount"}, "n": {"$sum": 1}}},
+    ]).to_list(1)
+    outstanding = outstanding_agg[0] if outstanding_agg else {"total": 0, "n": 0}
+
+    return {
+        "patient_metrics": {
+            "total": total_patients,
+            "new_today": new_today,
+            "new_7d": new_7d,
+            "new_30d": new_30d,
+            "by_gender": by_gender,
+            "by_age_group": age_groups,
+            "age_group_order": labels,
+            "sources_30d": sources_30d,
+        },
+        "visit_metrics": {
+            "total": total_visits,
+            "today": visits_today,
+            "last_7d": visits_7d,
+            "last_30d": visits_30d,
+            "by_visit_type_30d": by_visit_type,
+            "by_doctor_30d": cases_by_doctor_30d,
+        },
+        "revenue_metrics": {
+            "total_billed": rev_total["billed"],
+            "total_paid": rev_total["paid"],
+            "today": revenue_today,
+            "last_30d": revenue_30d,
+            "by_mode_30d": mode_breakdown,
+            "consult_vs_medicine_30d": {
+                "consultation": cm_split.get("consultation", 0),
+                "medicine": cm_split.get("medicine", 0),
+            },
+            "trend_30d": revenue_trend_30d,
+        },
+        "operational_metrics": {
+            "avg_turnaround_minutes": avg_turnaround_min,
+            "closed_cases_30d": closed_30d,
+        },
+        "financial_metrics": {
+            "outstanding_amount": outstanding["total"],
+            "outstanding_count": outstanding["n"],
+        },
     }

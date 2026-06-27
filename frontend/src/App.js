@@ -16,6 +16,7 @@ import PastVisitForm from "@/pages/reception/PastVisitForm";
 import DoctorDashboard from "@/pages/doctor/Dashboard";
 import DoctorCaseDetail from "@/pages/doctor/CaseDetail";
 import DoctorReminders from "@/pages/doctor/Reminders";
+import DoctorPatients from "@/pages/doctor/Patients";
 
 import PharmacyDashboard from "@/pages/pharmacy/Dashboard";
 import PharmacyCase from "@/pages/pharmacy/CaseDetail";
@@ -24,6 +25,8 @@ import PharmacyReminders from "@/pages/pharmacy/Reminders";
 import ProDashboard from "@/pages/pro/Dashboard";
 import BillingDetail from "@/pages/pro/BillingDetail";
 import Receipt from "@/pages/pro/Receipt";
+import ProFinancialSearch from "@/pages/pro/FinancialSearch";
+import ProAnalytics from "@/pages/pro/Analytics";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminUsers from "@/pages/admin/Users";
@@ -67,6 +70,8 @@ export default function App() {
               {/* Doctor */}
               <Route path="/doctor" element={<RequireAuth roles={DOCTOR_ROLES}><DoctorDashboard /></RequireAuth>} />
               <Route path="/doctor/all" element={<RequireAuth roles={OWNER_ONLY}><DoctorDashboard scope="all" /></RequireAuth>} />
+              <Route path="/doctor/patients" element={<RequireAuth roles={DOCTOR_ROLES}><DoctorPatients /></RequireAuth>} />
+              <Route path="/doctor/patients/:id/timeline" element={<RequireAuth roles={DOCTOR_ROLES}><PatientTimeline /></RequireAuth>} />
               <Route path="/doctor/cases/:id" element={<RequireAuth roles={DOCTOR_ROLES}><DoctorCaseDetail /></RequireAuth>} />
               <Route path="/doctor/reminders" element={<RequireAuth roles={DOCTOR_ROLES}><DoctorReminders /></RequireAuth>} />
 
@@ -77,6 +82,8 @@ export default function App() {
 
               {/* PRO */}
               <Route path="/pro" element={<RequireAuth roles={PRO_ROLES}><ProDashboard /></RequireAuth>} />
+              <Route path="/pro/financial-search" element={<RequireAuth roles={PRO_ROLES}><ProFinancialSearch /></RequireAuth>} />
+              <Route path="/pro/analytics" element={<RequireAuth roles={PRO_ROLES}><ProAnalytics /></RequireAuth>} />
               <Route path="/pro/cases/:id" element={<RequireAuth roles={PRO_ROLES}><BillingDetail /></RequireAuth>} />
 
               {/* Admin */}

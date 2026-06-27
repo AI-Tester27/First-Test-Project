@@ -32,7 +32,7 @@ async def list_doctors(user: dict = Depends(get_current_user)):
 async def list_patients(search: str = "", user: dict = Depends(get_current_user)):
     if user["role"] not in (ROLE_RECEPTION, ROLE_OWNER_DOCTOR, ROLE_ADMIN, ROLE_DOCTOR):
         raise HTTPException(status_code=403, detail="Not allowed")
-    q = {}
+    q: dict = {}
     if search:
         q = {"$or": [
             {"first_name": {"$regex": search, "$options": "i"}},
@@ -40,6 +40,10 @@ async def list_patients(search: str = "", user: dict = Depends(get_current_user)
             {"phone": {"$regex": search, "$options": "i"}},
             {"patient_uid": {"$regex": search, "$options": "i"}},
         ]}
+    # RBAC: a non-owner DOCTOR may only see patients they have cases for.
+    if user["role"] == ROLE_DOCTOR:
+        my_patient_ids = await db.cases.distinct("patient_id", {"assigned_doctor_id": user["id"]})
+        q = {"$and": [q, {"id": {"$in": my_patient_ids}}]} if q else {"id": {"$in": my_patient_ids}}
     patients = await db.patients.find(q, {"_id": 0}).sort("created_at", -1).limit(100).to_list(100)
     return {"patients": patients}
 
