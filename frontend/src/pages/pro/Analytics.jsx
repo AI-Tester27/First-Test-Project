@@ -57,8 +57,8 @@ export default function ProAnalytics() {
           <TrendingUp size={18} className="text-gray-300" />
         </div>
         <div className="flex items-end gap-1 h-32">
-          {rm.trend_30d.map((d, i) => (
-            <div key={i} className="flex-1 group relative">
+          {rm.trend_30d.map((d) => (
+            <div key={d.date} className="flex-1 group relative">
               <div className="w-full bg-teal-100 hover:bg-teal-300 transition-colors rounded-sm" style={{ height: `${Math.max(4, (d.amount / maxRev) * 100)}%` }} />
               <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block text-[10px] bg-gray-900 text-white px-1.5 py-0.5 rounded whitespace-nowrap z-10">{d.label}: {fINR(d.amount)}</div>
             </div>
@@ -151,8 +151,8 @@ function BarList({ data, formatter }) {
   if (data.length === 0) return <div className="text-sm text-gray-400">No data.</div>;
   return (
     <div className="space-y-2">
-      {data.map((d, i) => (
-        <div key={i} className="flex items-center gap-2 text-xs">
+      {data.map((d) => (
+        <div key={d.label} className="flex items-center gap-2 text-xs">
           <div className="w-24 truncate text-gray-700 shrink-0" title={d.label}>{d.label}</div>
           <div className="flex-1 h-5 bg-gray-100 rounded-sm overflow-hidden">
             <div className="h-full bg-teal-500/70" style={{ width: `${(d.value / max) * 100}%` }} />
