@@ -68,6 +68,22 @@ Refactored 1154-line server.py into modular routers (core.py + models.py + 10 ro
   - AI Visit Recap now supports `?mode=detailed` (owner doctor / admin only) → Markdown response with 6 sections: Patient Profile, Clinical Assessment, Possible Diagnostic Directions, **Mother Tincture Suggestions**, Lifestyle Recommendations, Treatment Considerations + a "decision-support only" disclaimer. `mode=brief` (default) keeps the 5-line briefing.
   - Tiny inline Markdown renderer in the timeline UI (avoids new dependency).
 
+### v9 (Workflow re-order + Reminder fixes + AI Master Prompt + IBM Plex font — iteration_9 ✅ 17/17 backend + 8/8 frontend)
+- **Workflow re-ordered**: Reception → Doctor → **PRO → Pharmacy** → Completed (was D→Pharma→PRO).
+  - New status `AWAITING_PRO_REVIEW` between consultation and billing.
+  - Doctor's primary action: "Complete consultation · Send to PRO". Secondary: "Send direct to Pharmacy" — requires a bypass reason (audit-logged + `pharmacy_bypassed_pro=true` on case).
+  - PRO recording `PAID + medicines_taken=true` auto-forwards case to `SENT_TO_PHARMACY`. Consultation-only (`medicines_taken=false`) → `CLOSED`. Explicit "Send to Pharmacy" button also available for partial/pending payments.
+  - Pharmacy dispense now closes case (was forwarded to billing).
+  - Status label "CLOSED" renamed → "Completed" everywhere in UI.
+- **Reminder bugs fixed**:
+  - Manual reminder creation now writes `patient_phone` + `scheduled_date`.
+  - Snooze writes `scheduled_date` (consistent display).
+  - **Pharmacy can snooze** (was complete-only).
+  - **Audience filter** for OWNER_DOCTOR & ADMIN: All / Mine / Pharmacy tabs on /doctor/reminders.
+- **AI Master Prompt** (`?mode=detailed`): 11 sections — Executive Summary · Clinical Assessment · Homeopathic Analysis · Remedy Suggestions · Mother Tincture · Patient Advice · Prescription Instructions · Follow-up · Lifestyle · **Confidence (Low/Medium/High)** · **Missing Information** + ⚠️ Disclaimer. Pulls full demographics, BMI, allergies, history, prescriptions.
+- **Font upgrade**: IBM Plex Sans (body) + IBM Plex Serif (headings) + IBM Plex Mono (numbers/code) — enterprise-credible, calm, used in healthcare/finance.
+- Tests: `/app/backend/tests/test_iteration9.py` 17/17 pass.
+
 ## Bring-your-own-key for AI (status)
 Currently uses Emergent Universal LLM key (Claude Sonnet 4.5). Provider abstraction is in `routers/ai.py::_call_llm`. To swap to direct OpenAI or Anthropic, set the appropriate env var and switch the model line — full BYOK admin UI is on the P1 backlog.
 

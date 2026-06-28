@@ -38,6 +38,7 @@ export default function DoctorReminders() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // 'ALL' is the backend default → omit the param. Sending audience=ALL would be a no-op.
       const audParam = isOwner && audience !== "ALL" ? `&audience=${audience}` : "";
       const { data } = await api.get(`/reminders?status=${tab}${audParam}`);
       setReminders(data.reminders);

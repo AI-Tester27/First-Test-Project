@@ -95,7 +95,7 @@ export default function PharmacyReminders() {
             <h2 className="font-display text-lg font-semibold text-gray-900 mb-1">Snooze reminder</h2>
             <p className="text-xs text-gray-600 mb-3">{snoozeFor.patient_name}</p>
             <label className="text-xs uppercase tracking-wider font-semibold text-gray-500 block mb-1.5">Snooze until (IST)</label>
-            <input type="datetime-local" value={snoozeUntil} onChange={(e) => setSnoozeUntil(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/20" data-testid="snooze-input" />
+            <input type="datetime-local" min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} value={snoozeUntil} onChange={(e) => setSnoozeUntil(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/20" data-testid="snooze-input" />
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setSnoozeFor(null)} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded">Cancel</button>
               <button onClick={doSnooze} disabled={!snoozeUntil} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded text-sm font-medium" data-testid="snooze-confirm">Snooze</button>
