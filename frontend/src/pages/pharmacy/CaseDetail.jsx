@@ -51,7 +51,7 @@ export default function PharmacyCase() {
     setBusy(true); setMsg("");
     try {
       await api.post(`/cases/${c.id}/dispense`, { ...dispense, medicine_amount: Number(dispense.medicine_amount) || 0 });
-      setMsg("Dispense saved. Case ready for billing.");
+      setMsg("Dispense saved. Case marked Completed.");
       reload();
     } catch (e) { setMsg(fmtErr(e)); }
     finally { setBusy(false); }
@@ -121,7 +121,7 @@ export default function PharmacyCase() {
         </div>
         <div className="flex items-center gap-3 mt-5">
           <button onClick={saveDispense} disabled={busy} className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-sm font-medium disabled:opacity-60" data-testid="save-dispense-btn">
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />} Save & send to billing
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />} Dispense & complete case
           </button>
           {msg && <span className="text-sm text-gray-500">{msg}</span>}
         </div>

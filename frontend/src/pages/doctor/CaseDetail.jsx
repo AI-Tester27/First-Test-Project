@@ -13,6 +13,9 @@ export default function CaseDetail() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("Notes");
   const [err, setErr] = useState("");
+  const [bypassOpen, setBypassOpen] = useState(false);
+  const [bypassReason, setBypassReason] = useState("");
+  const [bypassErr, setBypassErr] = useState("");
 
   const reload = async () => {
     try { const r = await api.get(`/cases/${id}`); setData(r.data); }
@@ -29,9 +32,17 @@ export default function CaseDetail() {
     await api.patch(`/cases/${c.id}/status`, { status: "IN_CONSULTATION" });
     reload();
   };
-  const sendToPharmacy = async () => {
-    await api.patch(`/cases/${c.id}/status`, { status: "SENT_TO_PHARMACY" });
+  const sendToPro = async () => {
+    await api.patch(`/cases/${c.id}/status`, { status: "AWAITING_PRO_REVIEW" });
     reload();
+  };
+  const submitBypass = async () => {
+    if (!bypassReason.trim()) { setBypassErr("Please write a brief reason."); return; }
+    try {
+      await api.patch(`/cases/${c.id}/status`, { status: "SENT_TO_PHARMACY", bypass_reason: bypassReason.trim() });
+      setBypassOpen(false); setBypassReason(""); setBypassErr("");
+      reload();
+    } catch (e) { setBypassErr(fmtErr(e)); }
   };
 
   return (
@@ -63,9 +74,14 @@ export default function CaseDetail() {
                 <button onClick={startConsult} className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-xs font-medium" data-testid="start-consult-btn">Start consultation</button>
               )}
               {(c.status === "IN_CONSULTATION" || c.status === "WAITING_FOR_DOCTOR") && (
-                <button onClick={sendToPharmacy} className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-medium" data-testid="send-pharmacy-btn">
-                  Send to Pharmacy <ArrowRight size={12} />
-                </button>
+                <>
+                  <button onClick={sendToPro} className="inline-flex items-center gap-1 px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-xs font-medium" data-testid="send-pro-btn">
+                    Complete consultation · Send to PRO <ArrowRight size={12} />
+                  </button>
+                  <button onClick={() => setBypassOpen(true)} className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50 rounded-md text-xs font-medium" title="Skip PRO — for known patients / quick refills" data-testid="send-pharmacy-bypass-btn">
+                    Send direct to Pharmacy
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -91,6 +107,30 @@ export default function CaseDetail() {
       {tab === "Attachments" && <AttachmentsTab caseId={c.id} />}
       {tab === "Follow-up" && <FollowupTab caseData={c} onSaved={reload} />}
       {tab === "AI Assist" && <AiTab caseId={c.id} />}
+
+      {bypassOpen && (
+        <div className="fixed inset-0 bg-black/40 grid place-items-center z-50" onClick={() => setBypassOpen(false)} data-testid="bypass-modal">
+          <div className="bg-white rounded-md shadow-xl border border-gray-200 p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-lg font-semibold text-gray-900 mb-1">Send directly to Pharmacy?</h2>
+            <p className="text-sm text-gray-600 mb-4">This skips PRO review (billing). Use only for quick refills or established patients. A short reason is required for the audit log.</p>
+            <label className="text-xs uppercase tracking-wider font-semibold text-gray-500 block mb-1.5">Reason</label>
+            <input
+              type="text"
+              autoFocus
+              value={bypassReason}
+              onChange={(e) => setBypassReason(e.target.value)}
+              placeholder="e.g. Refill — known patient, no consult fee"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/20"
+              data-testid="bypass-reason-input"
+            />
+            {bypassErr && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded mt-3 px-3 py-2">{bypassErr}</div>}
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => { setBypassOpen(false); setBypassReason(""); setBypassErr(""); }} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded">Cancel</button>
+              <button onClick={submitBypass} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium" data-testid="bypass-confirm-btn">Send to Pharmacy</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

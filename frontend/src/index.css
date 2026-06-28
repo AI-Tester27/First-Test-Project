@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -37,20 +37,25 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-feature-settings: "ss01", "cv01", "cv02";
+  letter-spacing: -0.005em;
 }
 
 h1, h2, h3, h4, h5, h6, .font-display {
-  font-family: 'Work Sans', system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: 'IBM Plex Serif', Georgia, serif;
+  letter-spacing: -0.015em;
+  font-feature-settings: "ss01";
 }
 
-.tabular-nums { font-variant-numeric: tabular-nums; }
+code, pre, .font-mono, .tabular-nums {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
 
 /* status pills */
 .pill {
@@ -74,6 +79,7 @@ h1, h2, h3, h4, h5, h6, .font-display {
 }
 .pill-waiting { background: #FEF3C7; color: #B45309; border-color: #FDE68A; }
 .pill-in-consultation { background: #DBEAFE; color: #1D4ED8; border-color: #BFDBFE; }
+.pill-awaiting-pro { background: #FCE7F3; color: #9D174D; border-color: #FBCFE8; }
 .pill-sent-pharmacy, .pill-in-pharmacy { background: #E0E7FF; color: #4338CA; border-color: #C7D2FE; }
 .pill-ready-billing, .pill-payment-pending, .pill-partially-paid { background: #D1FAE5; color: #047857; border-color: #A7F3D0; }
 .pill-closed { background: #ECFDF5; color: #059669; border-color: #A7F3D0; }

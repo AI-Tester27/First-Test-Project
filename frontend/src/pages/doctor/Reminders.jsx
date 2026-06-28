@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtErr, fmtIST, fmtIST_date, utcISOToIstLocal, istLocalToUtcISO } from "@/lib/api";
 import { QuickContact } from "@/pages/doctor/Patients";
+import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, BellRing, Calendar, CheckCircle2, Clock, Send, Trash2, AlarmClock } from "lucide-react";
 
 const STATUS_TABS = [
@@ -17,22 +18,32 @@ const STATUS_PILLS = {
   FAILED: "pill pill-unpaid",
 };
 
+const AUDIENCE_TABS = [
+  { key: "ALL", label: "All" },
+  { key: "MINE", label: "Mine" },
+  { key: "PHARMACY", label: "Pharmacy" },
+];
+
 export default function DoctorReminders() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "OWNER_DOCTOR" || user?.role === "ADMIN";
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("PENDING");
+  const [audience, setAudience] = useState("ALL");
   const [search, setSearch] = useState("");
   const [snoozing, setSnoozing] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/reminders?status=${tab}`);
+      const audParam = isOwner && audience !== "ALL" ? `&audience=${audience}` : "";
+      const { data } = await api.get(`/reminders?status=${tab}${audParam}`);
       setReminders(data.reminders);
     } catch (e) { setErr(fmtErr(e)); }
     finally { setLoading(false); }
-  }, [tab]);
+  }, [tab, audience, isOwner]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -76,15 +87,29 @@ export default function DoctorReminders() {
       <p className="text-sm text-gray-500 mb-6">All times shown in IST · Mark done when patient confirms or visit happens.</p>
 
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-md p-0.5" data-testid="status-tabs">
-          {STATUS_TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 text-xs font-medium rounded ${tab === t.key ? "bg-teal-700 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-              data-testid={`tab-${t.key}`}
-            >{t.label}</button>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-white border border-gray-200 rounded-md p-0.5" data-testid="status-tabs">
+            {STATUS_TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded ${tab === t.key ? "bg-teal-700 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                data-testid={`tab-${t.key}`}
+              >{t.label}</button>
+            ))}
+          </div>
+          {isOwner && (
+            <div className="flex gap-1 bg-white border border-gray-200 rounded-md p-0.5" data-testid="audience-tabs">
+              {AUDIENCE_TABS.map((a) => (
+                <button
+                  key={a.key}
+                  onClick={() => setAudience(a.key)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded ${audience === a.key ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                  data-testid={`audience-${a.key}`}
+                >{a.label}</button>
+              ))}
+            </div>
+          )}
         </div>
         <input
           type="text"

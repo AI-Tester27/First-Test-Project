@@ -1,13 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, fmtErr, fmtIST, fmtIST_date } from "@/lib/api";
+import { api, fmtErr, fmtIST, fmtIST_date, istLocalToUtcISO } from "@/lib/api";
 import { QuickContact } from "@/pages/doctor/Patients";
-import { Loader2, BellRing, CheckCircle2, ClipboardList } from "lucide-react";
+import { Loader2, BellRing, CheckCircle2, ClipboardList, Clock } from "lucide-react";
 
 export default function PharmacyReminders() {
   const [reminders, setReminders] = useState([]);
   const [tab, setTab] = useState("PENDING");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [snoozeFor, setSnoozeFor] = useState(null);
+  const [snoozeUntil, setSnoozeUntil] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -23,6 +25,15 @@ export default function PharmacyReminders() {
   const complete = async (r) => {
     try { await api.patch(`/reminders/${r.id}`, { status: "COMPLETED" }); load(); }
     catch (e) { setErr(fmtErr(e)); }
+  };
+
+  const doSnooze = async () => {
+    if (!snoozeUntil) return;
+    try {
+      await api.patch(`/reminders/${snoozeFor.id}`, { snooze_until: istLocalToUtcISO(snoozeUntil) });
+      setSnoozeFor(null); setSnoozeUntil("");
+      load();
+    } catch (e) { setErr(fmtErr(e)); }
   };
 
   return (
@@ -64,12 +75,32 @@ export default function PharmacyReminders() {
                 {r.completed_at && <div className="text-[11px] text-emerald-700 mt-1">Completed {fmtIST(r.completed_at)} {r.completed_by_name ? `· by ${r.completed_by_name}` : ""}</div>}
               </div>
               {r.status !== "COMPLETED" && (
-                <button onClick={() => complete(r)} className="px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded hover:border-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1" data-testid={`complete-${r.id}`}>
-                  <CheckCircle2 size={12} /> Mark complete
-                </button>
+                <div className="flex gap-1">
+                  <button onClick={() => { setSnoozeFor(r); setSnoozeUntil(""); }} className="px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded hover:border-amber-600 hover:text-amber-700 inline-flex items-center gap-1" data-testid={`snooze-${r.id}`}>
+                    <Clock size={12} /> Snooze
+                  </button>
+                  <button onClick={() => complete(r)} className="px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded hover:border-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1" data-testid={`complete-${r.id}`}>
+                    <CheckCircle2 size={12} /> Mark complete
+                  </button>
+                </div>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {snoozeFor && (
+        <div className="fixed inset-0 bg-black/40 grid place-items-center z-50" onClick={() => setSnoozeFor(null)} data-testid="snooze-modal">
+          <div className="bg-white rounded-md shadow-xl border border-gray-200 p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-lg font-semibold text-gray-900 mb-1">Snooze reminder</h2>
+            <p className="text-xs text-gray-600 mb-3">{snoozeFor.patient_name}</p>
+            <label className="text-xs uppercase tracking-wider font-semibold text-gray-500 block mb-1.5">Snooze until (IST)</label>
+            <input type="datetime-local" value={snoozeUntil} onChange={(e) => setSnoozeUntil(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/20" data-testid="snooze-input" />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setSnoozeFor(null)} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded">Cancel</button>
+              <button onClick={doSnooze} disabled={!snoozeUntil} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded text-sm font-medium" data-testid="snooze-confirm">Snooze</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

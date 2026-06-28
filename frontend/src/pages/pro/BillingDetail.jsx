@@ -49,6 +49,8 @@ export default function BillingDetail() {
   const total = Number(form.consultation_amount || 0) + (form.medicines_taken ? Number(form.medicine_amount || 0) : 0);
   const balance = Math.max(0, total - Number(form.amount_paid || 0));
   const isClosed = c.status === "CLOSED" && data.payment?.payment_status === "PAID";
+  const wasSentToPharmacy = c.status === "SENT_TO_PHARMACY" || c.status === "IN_PHARMACY";
+  const canSendToPharmacy = ["AWAITING_PRO_REVIEW", "PAYMENT_PENDING", "PARTIALLY_PAID"].includes(c.status);
 
   const save = async () => {
     setBusy(true); setMsg("");
@@ -64,6 +66,15 @@ export default function BillingDetail() {
       reload();
     } catch (e) { setMsg(fmtErr(e)); }
     finally { setBusy(false); }
+  };
+
+  const sendToPharmacyNow = async () => {
+    if (!window.confirm("Forward this case to Pharmacy now? Use this when payment is partial or pending but the patient should still receive medicines.")) return;
+    try {
+      await api.patch(`/cases/${c.id}/status`, { status: "SENT_TO_PHARMACY" });
+      setMsg("Case forwarded to Pharmacy.");
+      reload();
+    } catch (e) { setMsg(fmtErr(e)); }
   };
 
   return (
@@ -164,10 +175,18 @@ export default function BillingDetail() {
               </div>
             </Field>
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex items-center gap-3 pt-2 flex-wrap">
               <button onClick={save} disabled={busy || isClosed} className="inline-flex items-center gap-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-sm font-medium disabled:opacity-60" data-testid="save-payment-btn">
                 {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {isClosed ? "Already recorded" : "Record payment"}
               </button>
+              {canSendToPharmacy && form.medicines_taken && (
+                <button onClick={sendToPharmacyNow} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium" data-testid="send-to-pharmacy-btn" title="Forward case to Pharmacy now (manual override)">
+                  Send to Pharmacy
+                </button>
+              )}
+              {wasSentToPharmacy && (
+                <span className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2.5 py-1.5 font-medium" data-testid="sent-to-pharmacy-badge">Forwarded to Pharmacy</span>
+              )}
               {data.payment && !isClosed && (
                 <Link to={`/pro/cases/${c.id}/receipt`} target="_blank" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-teal-600 rounded-md text-sm font-medium" data-testid="print-receipt-btn">
                   <Printer size={14} /> Print receipt

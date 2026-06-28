@@ -42,17 +42,19 @@ export function fmtErr(err) {
 export const STATUS_LABELS = {
   WAITING_FOR_DOCTOR: "Waiting for Doctor",
   IN_CONSULTATION: "In Consultation",
+  AWAITING_PRO_REVIEW: "Awaiting PRO Review",
   SENT_TO_PHARMACY: "Sent to Pharmacy",
   IN_PHARMACY: "In Pharmacy",
   READY_FOR_BILLING: "Ready for Billing",
   PAYMENT_PENDING: "Payment Pending",
   PARTIALLY_PAID: "Partially Paid",
-  CLOSED: "Closed",
+  CLOSED: "Completed",
 };
 
 export const STATUS_PILL_CLASS = {
   WAITING_FOR_DOCTOR: "pill pill-waiting",
   IN_CONSULTATION: "pill pill-in-consultation",
+  AWAITING_PRO_REVIEW: "pill pill-awaiting-pro",
   SENT_TO_PHARMACY: "pill pill-sent-pharmacy",
   IN_PHARMACY: "pill pill-in-pharmacy",
   READY_FOR_BILLING: "pill pill-ready-billing",

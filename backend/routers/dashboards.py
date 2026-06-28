@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from core import (
     db, now_utc, require_roles,
     ROLE_PHARMACY, ROLE_OWNER_DOCTOR, ROLE_ADMIN, ROLE_PRO,
-    STATUS_CLOSED, STATUS_SENT_PHARMACY, STATUS_IN_PHARMACY,
+    STATUS_CLOSED, STATUS_AWAITING_PRO, STATUS_SENT_PHARMACY, STATUS_IN_PHARMACY,
     STATUS_READY_BILLING, STATUS_PAYMENT_PENDING, STATUS_PARTIALLY_PAID,
 )
 
@@ -69,7 +69,7 @@ async def pro_dashboard(user: dict = Depends(require_roles(ROLE_PRO, ROLE_OWNER_
 
     total_patients = await db.patients.count_documents({})
     pending_billing = await db.cases.count_documents({
-        "status": {"$in": [STATUS_READY_BILLING, STATUS_PAYMENT_PENDING, STATUS_PARTIALLY_PAID]}
+        "status": {"$in": [STATUS_AWAITING_PRO, STATUS_READY_BILLING, STATUS_PAYMENT_PENDING, STATUS_PARTIALLY_PAID]}
     })
 
     # Revenue per mode today

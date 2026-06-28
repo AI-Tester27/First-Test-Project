@@ -83,6 +83,7 @@ class FollowupIn(BaseModel):
 
 class StatusUpdateIn(BaseModel):
     status: str
+    bypass_reason: Optional[str] = None  # required only when doctor sends directly to pharmacy (skipping PRO)
 
 
 class DispenseIn(BaseModel):

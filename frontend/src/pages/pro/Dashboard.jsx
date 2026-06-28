@@ -18,7 +18,7 @@ export default function ProDashboard() {
       try {
         const [s, c] = await Promise.all([
           api.get("/pro/dashboard"),
-          api.get("/cases?status=READY_FOR_BILLING,PAYMENT_PENDING,PARTIALLY_PAID"),
+          api.get("/cases?status=AWAITING_PRO_REVIEW,READY_FOR_BILLING,PAYMENT_PENDING,PARTIALLY_PAID"),
         ]);
         setStats(s.data);
         setCases(c.data.cases);

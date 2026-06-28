@@ -27,10 +27,21 @@ def _scope_filter(user: dict) -> dict:
 
 
 @router.get("/reminders")
-async def list_reminders(status: str | None = None, user: dict = Depends(get_current_user)):
+async def list_reminders(
+    status: str | None = None,
+    audience: str | None = None,  # filter: "ALL" | "MINE" | "PHARMACY" (owner doctor only)
+    user: dict = Depends(get_current_user),
+):
     q = _scope_filter(user)
     if status:
         q["status"] = {"$in": status.split(",")}
+    # Owner doctor / admin may further filter
+    if audience and user["role"] in (ROLE_OWNER_DOCTOR, ROLE_ADMIN):
+        if audience == "MINE":
+            q["doctor_id"] = user.get("doctor_id") or user["id"]
+        elif audience == "PHARMACY":
+            q["audience"] = "PHARMACY"
+        # ALL → no extra filter
     reminders = await db.reminders.find(q, {"_id": 0}).sort("scheduled_at", 1).limit(200).to_list(200)
     return {"reminders": reminders, "providers": provider_status()}
 
@@ -45,14 +56,18 @@ async def create_reminder(
         raise HTTPException(status_code=404, detail="Patient not found")
     doctor_id = user.get("doctor_id") or (await db.cases.find_one({"id": payload.case_id}) or {}).get("assigned_doctor_id")
     audience = list(set(payload.audience + (["PHARMACY"] if payload.notify_pharmacy else [])))
+    sched_iso = payload.scheduled_at.isoformat()
+    sched_date = sched_iso[:10]  # YYYY-MM-DD derived from the datetime for date-only display
     doc = {
         "id": str(uuid.uuid4()),
         "case_id": payload.case_id,
         "patient_id": payload.patient_id,
-        "patient_name": f"{patient['first_name']} {patient['last_name']}",
+        "patient_name": f"{patient['first_name']} {patient.get('last_name', '')}".strip(),
         "patient_uid": patient.get("patient_uid"),
+        "patient_phone": patient.get("phone"),
         "doctor_id": doctor_id,
-        "scheduled_at": payload.scheduled_at.isoformat(),
+        "scheduled_at": sched_iso,
+        "scheduled_date": sched_date,
         "message": payload.message,
         "audience": audience,
         "status": "PENDING",
@@ -89,6 +104,7 @@ async def update_reminder(
             update["completed_by_name"] = user.get("name")
     if payload.snooze_until:
         update["scheduled_at"] = payload.snooze_until.isoformat()
+        update["scheduled_date"] = payload.snooze_until.isoformat()[:10]
         update["status"] = "PENDING"
         update["snoozed_at"] = now_utc().isoformat()
     if payload.message is not None:

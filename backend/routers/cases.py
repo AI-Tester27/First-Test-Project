@@ -10,7 +10,7 @@ from core import (
     load_case_for_user, enrich_case, case_filter_for_role,
     ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_RECEPTION, ROLE_PHARMACY, ROLE_PRO, ROLE_ADMIN,
     ALL_STATUSES,
-    STATUS_WAITING, STATUS_IN_CONSULT, STATUS_SENT_PHARMACY,
+    STATUS_WAITING, STATUS_IN_CONSULT, STATUS_AWAITING_PRO, STATUS_SENT_PHARMACY,
     STATUS_IN_PHARMACY, STATUS_READY_BILLING,
     STATUS_PAYMENT_PENDING, STATUS_PARTIALLY_PAID, STATUS_CLOSED,
 )
@@ -100,21 +100,41 @@ async def update_case_status(case_id: str, payload: StatusUpdateIn, user: dict =
     if payload.status not in ALL_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
     role = user["role"]
+    # New workflow: Reception → Doctor → PRO → Pharmacy → Completed.
+    # Doctor's default exit is AWAITING_PRO_REVIEW; SENT_TO_PHARMACY is a controlled bypass
+    # (requires bypass_reason — e.g. quick refills for known patients).
     allowed = {
-        ROLE_DOCTOR: {STATUS_IN_CONSULT, STATUS_SENT_PHARMACY},
+        ROLE_DOCTOR: {STATUS_IN_CONSULT, STATUS_AWAITING_PRO, STATUS_SENT_PHARMACY},
         ROLE_OWNER_DOCTOR: set(ALL_STATUSES),
         ROLE_ADMIN: set(ALL_STATUSES),
-        ROLE_PHARMACY: {STATUS_IN_PHARMACY, STATUS_READY_BILLING},
-        ROLE_PRO: {STATUS_PAYMENT_PENDING, STATUS_PARTIALLY_PAID, STATUS_CLOSED},
+        # Pharmacy now closes the case after dispensing (formerly forwarded to billing).
+        ROLE_PHARMACY: {STATUS_IN_PHARMACY, STATUS_CLOSED, STATUS_READY_BILLING},
+        # PRO now forwards to pharmacy after billing.
+        ROLE_PRO: {STATUS_PAYMENT_PENDING, STATUS_PARTIALLY_PAID, STATUS_CLOSED, STATUS_SENT_PHARMACY},
     }
     if payload.status not in allowed.get(role, set()):
         raise HTTPException(status_code=403, detail=f"Role {role} cannot set status {payload.status}")
 
+    # Doctor bypass-to-pharmacy must include an audit-friendly reason.
+    if role == ROLE_DOCTOR and payload.status == STATUS_SENT_PHARMACY:
+        if not (payload.bypass_reason and payload.bypass_reason.strip()):
+            raise HTTPException(
+                status_code=400,
+                detail="A bypass reason is required when a doctor sends a case directly to pharmacy (skipping PRO).",
+            )
+
     updates = {"status": payload.status, "updated_at": now_utc().isoformat()}
     if payload.status == STATUS_IN_CONSULT:
         updates["consultation_started_at"] = now_utc().isoformat()
-    if payload.status == STATUS_SENT_PHARMACY:
+    if payload.status == STATUS_AWAITING_PRO:
         updates["consultation_completed_at"] = now_utc().isoformat()
+        updates["sent_to_pro_at"] = now_utc().isoformat()
+    if payload.status == STATUS_SENT_PHARMACY:
+        # Set consultation_completed_at only if doctor bypass; otherwise PRO forwarding doesn't change it.
+        if role == ROLE_DOCTOR:
+            updates["consultation_completed_at"] = now_utc().isoformat()
+            updates["pharmacy_bypass_reason"] = payload.bypass_reason.strip()
+            updates["pharmacy_bypassed_pro"] = True
         updates["sent_to_pharmacy_at"] = now_utc().isoformat()
     if payload.status == STATUS_READY_BILLING:
         updates["ready_for_billing_at"] = now_utc().isoformat()
@@ -122,7 +142,10 @@ async def update_case_status(case_id: str, payload: StatusUpdateIn, user: dict =
         updates["closed_at"] = now_utc().isoformat()
 
     await db.cases.update_one({"id": case_id}, {"$set": updates})
-    await audit(user, "STATUS_CHANGE", "Case", case_id, {"from": c["status"], "to": payload.status})
+    await audit(user, "STATUS_CHANGE", "Case", case_id, {
+        "from": c["status"], "to": payload.status,
+        **({"bypass_reason": payload.bypass_reason} if payload.bypass_reason else {}),
+    })
     updated = await db.cases.find_one({"id": case_id}, {"_id": 0})
     return {"case": await enrich_case(updated)}
 

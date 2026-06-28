@@ -6,7 +6,7 @@ from core import (
     db, now_utc, next_counter, audit,
     require_roles, load_case_for_user,
     ROLE_PRO, ROLE_OWNER_DOCTOR, ROLE_ADMIN,
-    STATUS_CLOSED, STATUS_PARTIALLY_PAID, STATUS_PAYMENT_PENDING,
+    STATUS_CLOSED, STATUS_PARTIALLY_PAID, STATUS_PAYMENT_PENDING, STATUS_SENT_PHARMACY,
 )
 from models import PaymentIn
 
@@ -104,10 +104,20 @@ async def save_payment(
         {"$set": doc, "$setOnInsert": {"created_at": now_utc().isoformat()}},
         upsert=True,
     )
-    new_status = {"PAID": STATUS_CLOSED, "PARTIAL": STATUS_PARTIALLY_PAID, "UNPAID": STATUS_PAYMENT_PENDING}[pstatus]
+    # New workflow: after PRO finalises payment, the case forwards to Pharmacy if medicines
+    # are involved; consultation-only visits close immediately on full payment.
+    if pstatus == "PAID":
+        new_status = STATUS_SENT_PHARMACY if payload.medicines_taken else STATUS_CLOSED
+    elif pstatus == "PARTIAL":
+        new_status = STATUS_PARTIALLY_PAID
+    else:
+        new_status = STATUS_PAYMENT_PENDING
     case_updates = {"status": new_status, "updated_at": now_utc().isoformat()}
+    now_iso = now_utc().isoformat()
     if new_status == STATUS_CLOSED:
-        case_updates["closed_at"] = now_utc().isoformat()
+        case_updates["closed_at"] = now_iso
+    if new_status == STATUS_SENT_PHARMACY:
+        case_updates["sent_to_pharmacy_at"] = now_iso
     await db.cases.update_one({"id": case_id}, {"$set": case_updates})
     await audit(user, "PAYMENT_UPDATE", "Payment", case_id, {"status": pstatus, "total": total, "paid": payload.amount_paid})
     saved = await db.payments.find_one({"case_id": case_id}, {"_id": 0})

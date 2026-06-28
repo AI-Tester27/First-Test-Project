@@ -118,24 +118,38 @@ async def ai_visit_recap(
 
     # Build a compact, chronological narrative
     bmi_str = f"{patient.get('bmi')}" if patient.get('bmi') else "—"
+    sources = ", ".join(patient.get("sources") or []) or "—"
     lines = [
-        f"Patient: {patient.get('first_name', '')} {patient.get('last_name', '')}, "
-        f"{patient.get('gender', '?')}, age {patient.get('age', '?')}. "
-        f"UID: {patient.get('patient_uid', '')}. Total visits: {len(cases)}.",
-        f"Height: {patient.get('height_cm') or '—'} cm, Weight: {patient.get('weight_kg') or '—'} kg, BMI: {bmi_str}.",
-        f"Marital status: {patient.get('marital_status') or '—'}. Language: {patient.get('preferred_language') or 'EN'}.",
+        "=== PATIENT PROFILE ===",
+        f"Name: {patient.get('first_name', '')} {patient.get('last_name', '')}",
+        f"UID: {patient.get('patient_uid', '')}",
+        f"Age: {patient.get('age', '?')} · Gender: {patient.get('gender', '?')} · Marital status: {patient.get('marital_status') or '—'}",
+        f"Phone: {patient.get('phone', '—')} · Language: {patient.get('preferred_language') or 'EN'}",
+        f"Address: {patient.get('address') or '—'}",
+        f"Height: {patient.get('height_cm') or '—'} cm · Weight: {patient.get('weight_kg') or '—'} kg · BMI: {bmi_str}",
+        f"Acquisition sources: {sources}",
+        f"Referral name: {patient.get('referral_name') or '—'}",
+        f"Total visits on record: {len(cases)}",
+        "",
+        "=== VISIT HISTORY (chronological) ===",
     ]
     for i, c in enumerate(cases, 1):
         when = c.get("created_at", "")[:10]
-        note = await db.clinical_notes.find_one({"case_id": c["id"]}, {"_id": 0})
+        note = await db.clinical_notes.find_one({"case_id": c["id"]}, {"_id": 0}) or {}
         rx = await db.prescriptions.find({"case_id": c["id"]}, {"_id": 0}).sort("version_no", -1).limit(1).to_list(1)
-        med_list = ", ".join([(it.get("medicine_name") or "") + " " + (it.get("potency") or "")
-                              for it in ((rx[0] if rx else {}).get("items") or [])]).strip(", ") or "—"
+        med_list = ", ".join([
+            f"{it.get('medicine_name', '')} {it.get('potency', '')} {it.get('dosage', '')} {it.get('frequency', '')}".strip()
+            for it in ((rx[0] if rx else {}).get("items") or [])
+        ]).strip(", ") or "—"
         lines.append(
-            f"Visit {i} ({when}): Complaint: {c.get('complaint_text', '')[:200]}\n"
-            f"  Diagnosis: {((note or {}).get('diagnosis_summary') or '—')[:200]}\n"
-            f"  Allergies: {((note or {}).get('sensitivity_allergies') or '—')[:120]}\n"
-            f"  Rx: {med_list[:240]}"
+            f"Visit {i} — {when} · type {c.get('visit_type') or '—'} · status {c.get('status') or '—'}\n"
+            f"  Complaint: {(c.get('complaint_text') or '—')[:300]}\n"
+            f"  Diagnosis summary: {((note.get('diagnosis_summary')) or '—')[:300]}\n"
+            f"  Allergies / sensitivity: {((note.get('sensitivity_allergies')) or '—')[:200]}\n"
+            f"  Doctor's suggestions: {((note.get('suggestions')) or '—')[:200]}\n"
+            f"  Additional notes: {((note.get('additional_info')) or '—')[:200]}\n"
+            f"  Rx given: {med_list[:300]}\n"
+            f"  Follow-up date set: {c.get('next_followup_date') or '—'}"
         )
     narrative = "\n".join(lines)
 
@@ -154,31 +168,51 @@ async def ai_visit_recap(
             "Avoid definitive diagnosis. Use cautious 'may/possible' phrasing. "
             f"{lang_note} Keep every bullet under 20 words."
         )
-    else:  # detailed
+    else:  # detailed — Master Prompt
         system = (
-            "You are a senior homeopathy clinical assistant preparing a comprehensive decision-support "
-            "briefing for an experienced doctor. Read the full patient history below and produce a "
+            "You are a senior homeopathy clinical assistant generating decision-support for an experienced "
+            "doctor at Sparsa Homeo Care. Read the complete patient record provided below and produce a "
             "well-structured Markdown response with EXACTLY these sections, in this order:\n\n"
-            "## 1. Patient Profile Summary\n"
-            "A 2-3 sentence portrait covering demographics, build (BMI), and overall trajectory.\n\n"
+            "## 1. Executive Summary\n"
+            "Two to three sentences capturing who the patient is, the dominant clinical picture, and the "
+            "trajectory across visits.\n\n"
             "## 2. Clinical Assessment\n"
-            "Identify the recurring complaint patterns, time course, severity changes, and any concerning trends.\n\n"
-            "## 3. Possible Diagnostic Directions\n"
-            "List 2-4 possible diagnoses in order of likelihood, using cautious 'may suggest / possible' "
-            "language. Briefly justify each from the history.\n\n"
-            "## 4. Mother Tincture Suggestions\n"
-            "Suggest 2-4 candidate homeopathic mother tinctures (Q potency) that align with the symptom "
-            "picture and constitution, with a one-line rationale each. Use standard names "
-            "(e.g. Belladonna Q, Bryonia Q). DO NOT prescribe dosage or duration — that is the doctor's call.\n\n"
-            "## 5. Lifestyle Recommendations\n"
-            "Three to five practical, India-context lifestyle/diet suggestions tailored to this patient.\n\n"
-            "## 6. Treatment Considerations\n"
-            "Highlight allergies, interactions to avoid, red flags warranting referral or labs, and follow-up cadence.\n\n"
+            "Identify recurring symptoms, severity changes, time course, and any concerning trends. "
+            "Cross-reference allergies, chronic conditions and current medications. Use cautious 'may suggest' "
+            "language — never definitive.\n\n"
+            "## 3. Homeopathic Analysis\n"
+            "Map the symptom picture to a constitutional / miasmatic interpretation in 4-6 lines. Note any "
+            "key modalities (better/worse), mental-emotional layer, and chronicity.\n\n"
+            "## 4. Remedy Suggestions\n"
+            "List 2-4 candidate homeopathic remedies (centesimal/decimal potencies, e.g. Sulphur 30C, "
+            "Natrum Mur 200C) with a one-line rationale each. DO NOT prescribe dosage or duration.\n\n"
+            "## 5. Mother Tincture Suggestions\n"
+            "List 2-4 candidate mother tinctures (Q potency, e.g. Crataegus Q) that complement the picture, "
+            "with a one-line rationale each.\n\n"
+            "## 6. Patient Advice\n"
+            "3-5 bullets in plain language, suitable for sharing with the patient (no jargon, no remedy names).\n\n"
+            "## 7. Prescription Instructions\n"
+            "Brief 2-3 line note about how to administer the suggested remedies (timing, do/don'ts).\n\n"
+            "## 8. Follow-up Recommendations\n"
+            "Suggested follow-up window (e.g. '7-10 days') and what to reassess. Flag any red flags warranting "
+            "earlier review or referral / labs.\n\n"
+            "## 9. Lifestyle Advice\n"
+            "3-5 practical, India-context lifestyle / diet / sleep / exercise suggestions tailored to this "
+            "patient's age, BMI and history.\n\n"
+            "## 10. Confidence Score\n"
+            "Output exactly ONE of: `**Confidence: LOW**`, `**Confidence: MEDIUM**`, or `**Confidence: HIGH**`. "
+            "Use HIGH only when the record is rich (3+ visits, complete history, no critical gaps). Use LOW "
+            "when key data is missing. Add a single line explaining the choice.\n\n"
+            "## 11. Missing Information\n"
+            "Bulleted list of data items that would materially improve this assessment if collected next visit "
+            "(e.g. lab reports, sleep history, family history). If everything needed is present, write "
+            "'No critical gaps.'\n\n"
             "## ⚠️ Disclaimer\n"
-            "End with: 'This AI-generated analysis is decision-support only — for review by the treating doctor. "
-            "Do not share with the patient without verification.'\n\n"
-            "Style: concise, professional, use bullet lists inside each section. Total response should be "
-            "around 350-500 words. Write in English."
+            "End with: 'This AI-generated analysis is decision-support only — for review by the treating "
+            "doctor at Sparsa Homeo Care. Do not share verbatim with the patient. Confirm remedy selection, "
+            "potency, dosage and duration based on full case-taking.'\n\n"
+            "Style: concise, professional, use bullet lists inside each section. Total response 500-750 words. "
+            "Write in English. Use **bold** for key terms. Avoid placeholder phrases like 'as an AI'."
         )
 
     try:
