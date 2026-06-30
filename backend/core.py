@@ -71,8 +71,8 @@ def make_token(user_id: str, role: str) -> str:
 
 def set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        key="access_token", value=token, httponly=True, secure=True,
-        samesite="none", max_age=int(ACCESS_TTL.total_seconds()), path="/",
+        key="access_token", value=token, httponly=True, secure=False,
+        samesite="lax", max_age=int(ACCESS_TTL.total_seconds()), path="/",
     )
 
 
