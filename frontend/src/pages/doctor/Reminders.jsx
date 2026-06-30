@@ -53,9 +53,27 @@ export default function DoctorReminders() {
     catch (e) { setErr(fmtErr(e)); }
   };
 
+  const [notice, setNotice] = useState(null); // { kind: "ok"|"warn"|"err", text: string }
+
   const send = async (r) => {
-    try { await api.post(`/reminders/${r.id}/send-now`); load(); }
-    catch (e) { setErr(fmtErr(e)); }
+    setNotice({ kind: "ok", text: `Sending to ${r.patient_name}…` });
+    try {
+      const { data } = await api.post(`/reminders/${r.id}/send-now`);
+      const status = data?.reminder?.status;
+      const reason = data?.reminder?.fail_reason;
+      if (status === "SENT") {
+        setNotice({ kind: "ok", text: `Sent to ${r.patient_name} via WhatsApp / SMS. The reminder moved to the "Sent" tab.` });
+      } else if (status === "FAILED" && reason === "PROVIDER_NOT_CONFIGURED") {
+        setNotice({ kind: "warn", text: `Twilio + WhatsApp keys aren't configured yet, so nothing was actually delivered. The reminder is now in the "Failed" tab. Add keys at Admin → Messaging to enable delivery.` });
+      } else if (status === "FAILED" && reason === "NO_PHONE") {
+        setNotice({ kind: "warn", text: `${r.patient_name} has no phone number on file. The reminder moved to the "Failed" tab.` });
+      } else if (status === "FAILED") {
+        setNotice({ kind: "err", text: `Delivery failed: ${reason || "unknown reason"}. The reminder moved to the "Failed" tab.` });
+      } else {
+        setNotice({ kind: "ok", text: `Reminder updated (status: ${status}).` });
+      }
+      load();
+    } catch (e) { setNotice({ kind: "err", text: fmtErr(e) }); }
   };
 
   const remove = async (r) => {
@@ -123,6 +141,16 @@ export default function DoctorReminders() {
       </div>
 
       {err && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{err}</div>}
+      {notice && (
+        <div className={`mb-4 text-sm rounded-md px-3 py-2 border flex items-start justify-between gap-3 ${
+          notice.kind === "ok"   ? "text-emerald-800 bg-emerald-50 border-emerald-200" :
+          notice.kind === "warn" ? "text-amber-900 bg-amber-50 border-amber-200" :
+                                   "text-red-700 bg-red-50 border-red-200"
+        }`} data-testid="reminder-notice">
+          <div>{notice.text}</div>
+          <button onClick={() => setNotice(null)} className="text-current opacity-60 hover:opacity-100" aria-label="Dismiss" data-testid="dismiss-notice">×</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid place-items-center p-12 text-gray-400"><Loader2 className="animate-spin" /></div>
