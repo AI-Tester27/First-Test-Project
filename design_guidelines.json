@@ -1,0 +1,116 @@
+{
+  "theme": "light",
+  "archetype": "1_organic_earthy",
+  "domain_context": "Internal Clinical Workflow Dashboard",
+  "design_philosophy": "A serious medical/clinical internal tool. Must feel trustworthy, calm, efficient, and FAST to use. High information density without clutter. No playful illustrations or dark mode.",
+  "typography": {
+    "headings": "Work Sans",
+    "body": "IBM Plex Sans",
+    "rules": [
+      "Use Work Sans for all headings, Work Sans 500 or 600 for card titles.",
+      "Use IBM Plex Sans for body text, form inputs, and tabular data.",
+      "Apply tight tracking (`tracking-tight`) to H1 and H2.",
+      "Use tabular numbers (`tabular-nums`) for ages, dates, and billing amounts.",
+      "CRITICAL: Never use Inter or Roboto."
+    ],
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl",
+      "h2": "text-2xl sm:text-3xl",
+      "h3": "text-xl sm:text-2xl",
+      "h4": "text-lg",
+      "body": "text-sm sm:text-base",
+      "labels": "text-xs tracking-wider uppercase font-semibold text-gray-500"
+    }
+  },
+  "colors": {
+    "background": "#F9FAFB",
+    "surface": "#FFFFFF",
+    "surface_muted": "#F3F4F6",
+    "primary": "#0F766E",
+    "primary_hover": "#115E59",
+    "primary_muted": "#CCFBF1",
+    "text_main": "#111827",
+    "text_secondary": "#4B5563",
+    "text_tertiary": "#9CA3AF",
+    "border": "#E5E7EB",
+    "status": {
+      "waiting": {
+        "bg": "#FEF3C7",
+        "text": "#B45309",
+        "border": "#FDE68A"
+      },
+      "in_consultation": {
+        "bg": "#DBEAFE",
+        "text": "#1D4ED8",
+        "border": "#BFDBFE"
+      },
+      "pharmacy": {
+        "bg": "#E0E7FF",
+        "text": "#4338CA",
+        "border": "#C7D2FE"
+      },
+      "ready_billing": {
+        "bg": "#D1FAE5",
+        "text": "#047857",
+        "border": "#A7F3D0"
+      },
+      "closed": {
+        "bg": "#ECFDF5",
+        "text": "#059669",
+        "border": "#A7F3D0"
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "strategy": "Control Room Grid",
+    "rules": [
+      "Use desktop-first layouts (Target: 5 PCs on LAN).",
+      "Grid gaps should be tight (`gap-4` or `gap-6`) for density.",
+      "Cards should have minimal padding (`p-4` or `p-5`) to maximize data visibility.",
+      "Use a persistent left sidebar (`w-64`) for navigation.",
+      "Card styling: Flat background (`bg-white`), 1px subtle border (`border-gray-200`), NO SHADOWS (keeps it clean/flat).",
+      "Optical alignment: align text to the left for data readability."
+    ]
+  },
+  "components_strategy": {
+    "forms": "Use highly structured Shadcn form components. Place labels explicitly above inputs. Inputs should have subtle 1px borders and slight focus rings (`focus:ring-teal-600/20 focus:border-teal-600`).",
+    "tables": "Dense Shadcn tables. Use sticky headers for long lists. Implement alternating row colors (`even:bg-gray-50`) if it improves scanability.",
+    "badges": "Status workflow chips must be pill-shaped (`rounded-full`), using the specified status colors (e.g., waiting, in-consultation).",
+    "ai_assist_panel": "Design as a floating side-drawer or fixed right panel. Use a subtle gradient or distinct background (like `#F8FAFC`) to separate it from clinical notes.",
+    "buttons": "Primary CTA in Teal (`#0F766E`), secondary in outline style with gray text. Avoid large border-radius; keep it sharp (`rounded-md`).",
+    "navigation": "Role-based visibility. Highlight active path with the Primary Teal color and a left border accent (`border-l-4`)."
+  },
+  "icons_and_assets": {
+    "library": "lucide-react",
+    "usage": "Use stroke-width 1.5 for a sophisticated, lightweight clinical feel. Avoid heavy/filled icons."
+  },
+  "motion_and_interaction": {
+    "hover": "Subtle background color changes. `hover:bg-gray-50` on table rows. `hover:border-teal-600` on inputs.",
+    "transitions": "Keep animations minimal and fast (`duration-150 ease-in-out`). Do not delay workflow."
+  },
+  "testing": {
+    "requirements": [
+      "CRITICAL: All interactive and key informational elements MUST include `data-testid` attributes.",
+      "Format: kebab-case, role-based. Example: `data-testid=\"login-submit-button\"`, `data-testid=\"patient-search-input\"`."
+    ]
+  },
+  "image_urls": [
+    {
+      "category": "login_background",
+      "url": "https://images.pexels.com/photos/7789602/pexels-photo-7789602.jpeg",
+      "description": "Bright white clinic room, modern minimalist design. Use as the background for the login page with a heavy white overlay (`bg-white/80 backdrop-blur-sm`) to keep the login form prominent."
+    },
+    {
+      "category": "logo_placeholder",
+      "url": "https://images.unsplash.com/photo-1719561975005-d2c2b08c6ed8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwyfHxtaW5pbWFsaXN0JTIwYnJpZ2h0JTIwY2xpbmljJTIwaW50ZXJpb3J8ZW58MHx8fHwxNzc5MzcwMTE0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Use Lucide 'Leaf' or 'Cross' icon combined with typography for the logo instead of external images, to keep the UI lightweight."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Ensure the UI is strictly desktop-first and optimized for horizontal space.",
+    "Avoid generic purple or dark mode styling completely.",
+    "Build Shadcn components using raw Tailwind overriding where necessary to remove shadows and implement 1px borders.",
+    "Implement the 'AI assist panel' with 3 distinct action buttons (Summarize, Draft, Instructions) prominently visible for the Doctor role.",
+    "Include a printable receipt view for the PRO/Billing role (bilingual EN+Telugu layout simulation)."
+  ]
+}

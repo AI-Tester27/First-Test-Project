@@ -1,0 +1,37 @@
+{
+  "summary": "Backend-only round-2 tests for the 4 new feature areas (attachments via Emergent Object Storage, patient timeline, 5 CSV exports, Twilio/WhatsApp reminder with graceful PROVIDER_NOT_CONFIGURED fallback) + audit log verification. 20/20 new tests pass. Re-ran round-1 regression: 33/33 still pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sparsa_round2.py",
+    "/app/backend/tests/test_sparsa_backend.py",
+    "/app/test_reports/pytest/round2_results.xml",
+    "/app/test_reports/pytest/round1_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1154 lines — consider splitting into routers (auth, cases, attachments, exports, reminders, ai). Past the 700-line guideline.",
+    "Attachment upload reads full bytes into memory before the 10MB check. With many large uploads this risks worker RAM spikes; consider streaming/length-check via Content-Length header to short-circuit early.",
+    "send_whatsapp/send_sms use blocking `requests.post` inside async endpoints (_deliver_reminder). When real keys are configured this will block the event loop — switch to httpx.AsyncClient or run in a threadpool.",
+    "patient_timeline performs N+1 queries (per case: doctor, payment, notes, prescriptions, attachments_count). For patients with many cases this is slow — batch with $in or aggregation.",
+    "CSV exports load up to 100000 rows into memory via to_list before streaming — fine now, but for real growth use a Mongo cursor + streaming generator into StreamingResponse.",
+    "Attachment `storage_path` uses `result['path']` from put_object response without validating the contract; if storage returns an unexpected shape this raises KeyError 500. Add a defensive fallback to the constructed path.",
+    "Attachment delete is soft-delete only — orphan objects remain in Emergent Object Storage. Consider a background reaper or hard-delete option for admin."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (53/53 = 20 new + 33 regression)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "From /app/memory/test_credentials.md: admin1 / jyothi / hemanth / reception1 / pharmacy1 / pro1 all Password@123.",
+  "seed_data_creation": "Created two TEST_ patients (TEST_R2H_* assigned to doctor-hemanth and TEST_R2J_* assigned to doctor-jyothi) and several attachments (1 PNG soft-deleted, 1 JPG, 1 PDF) plus a follow-up reminder marked FAILED with fail_reason=PROVIDER_NOT_CONFIGURED. No cleanup performed (test infra reuses TEST_ prefix).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_sparsa_round2.py covers all 4 new feature areas. The 10MB rejection test sends 11MB over the wire (slow ~1-2s) but works. Storage is REAL (Emergent Object Storage live), WhatsApp+Twilio keys intentionally absent so /health/providers/reminders all report {whatsapp:false, sms:false} and reminder send-now correctly marks FAILED with PROVIDER_NOT_CONFIGURED. Audit log accumulates ATTACHMENT_UPLOAD / ATTACHMENT_DOWNLOAD / ATTACHMENT_DELETE / EXPORT entries as expected.",
+  "rca of the issue": "N/A — no failures observed."
+}

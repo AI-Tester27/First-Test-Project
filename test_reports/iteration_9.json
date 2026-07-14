@@ -1,0 +1,59 @@
+{
+  "summary": "FRONTEND-ONLY playwright verification of iteration_9 UI changes for Sparsa Homeo Care. ALL 8 listed features PASS end-to-end with real backend integration. Logged in as hemanth (non-owner DOCTOR), jyothi (OWNER_DOCTOR), pro1 (PRO), pharmacy1 (PHARMACY) and exercised the full workflow Doctor -> PRO -> Pharmacy and the new bypass-direct-to-pharmacy path. No frontend bugs found. Backend stayed green (17/17 from prior iteration) -- no backend assertions retested.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results_detail": {
+    "1_doctor_dual_buttons_and_bypass": {
+      "status": "PASS",
+      "details": "On /doctor/cases/CASE-000008 (WAITING_FOR_DOCTOR, hemanth) both data-testid='send-pro-btn' and data-testid='send-pharmacy-bypass-btn' are rendered. Click bypass -> data-testid='bypass-modal' opens, document.activeElement is the bypass-reason-input (autofocus correct). Empty submit -> inline error 'Please write a brief reason.' visible. After filling 'Refill test' and clicking data-testid='bypass-confirm-btn', modal closes, case status pill updates to 'Sent to Pharmacy' (SENT_TO_PHARMACY)."
+    },
+    "2_status_pill_labels": {
+      "status": "PASS",
+      "details": "CASE-000025 (AWAITING_PRO_REVIEW) pill renders 'Awaiting PRO Review' (pink). CASE-000032 (CLOSED) pill renders 'Completed' (green). STATUS_LABELS in /app/frontend/src/lib/api.js confirmed."
+    },
+    "3_pro_send_to_pharmacy": {
+      "status": "PASS",
+      "details": "Logged in as pro1, opened CASE-000031 (PAYMENT_PENDING). With medicines_taken='Y' the data-testid='send-to-pharmacy-btn' (indigo) renders. Click -> confirm dialog -> case forwarded, data-testid='sent-to-pharmacy-badge' ('Forwarded to Pharmacy') becomes visible."
+    },
+    "4_pharmacy_dispense_label_and_completion": {
+      "status": "PASS",
+      "details": "Logged in as pharmacy1, opened SENT_TO_PHARMACY CASE-000031. data-testid='save-dispense-btn' text reads EXACTLY 'Dispense & complete case'. After clicking save, page contains 'Completed' status pill."
+    },
+    "5_pharmacy_reminder_snooze": {
+      "status": "PASS",
+      "details": "/pharmacy/reminders Active tab shows 5 PENDING reminder cards each with Snooze + Mark complete. data-testid='snooze-<rid>' click opens data-testid='snooze-modal'. Filling data-testid='snooze-input' with '2026-12-31T23:59' and clicking data-testid='snooze-confirm' closes the modal (PATCH /api/reminders/{id} succeeds)."
+    },
+    "6_jyothi_audience_tabs_visible_and_firing": {
+      "status": "PASS",
+      "details": "Logged in as jyothi (OWNER_DOCTOR), /doctor/reminders shows data-testid='audience-tabs' container plus data-testid='audience-ALL', 'audience-MINE', 'audience-PHARMACY'. Clicking MINE fires GET /api/reminders?status=PENDING&audience=MINE, clicking PHARMACY fires GET /api/reminders?status=PENDING&audience=PHARMACY. NOTE: clicking ALL correctly omits the audience param (by design)."
+    },
+    "7_hemanth_audience_tabs_hidden": {
+      "status": "PASS",
+      "details": "Logged in as hemanth (regular DOCTOR), /doctor/reminders shows data-testid='status-tabs' only. data-testid='audience-tabs' count = 0 (isOwner gate works)."
+    },
+    "8_ibm_plex_fonts": {
+      "status": "PASS",
+      "details": "getComputedStyle(document.body).fontFamily = '\"IBM Plex Sans\", system-ui, -apple-system, BlinkMacSystemFont, sans-serif'. h1 font = '\"IBM Plex Serif\", Georgia, serif'."
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Reminders.jsx audience param: by design the 'ALL' tab does NOT append &audience= -- this is correct behaviour (backend default = ALL). Worth a code comment so future readers don't think it's a bug.",
+    "doctor/CaseDetail.jsx bypass modal: focus is handled via the native input autoFocus prop, which works on first mount only. If user closes and re-opens the modal in the same session, autofocus may not re-fire on all browsers; consider a useEffect + ref.focus() inside the conditional render for robustness.",
+    "pharmacy/Reminders.jsx snooze button currently uses raw datetime-local without min=now -- a user could pick a past datetime; backend likely accepts it but a min attribute would be a cheap UX guard."
+  ],
+  "updated_files": ["/app/test_reports/iteration_9.json"],
+  "success_rate": {"backend": "n/a (frontend-only run)", "frontend": "100% (8/8 features)"},
+  "test_credentials": "Used /app/memory/test_credentials.md verbatim: hemanth/Password@123, jyothi/Password@123, pro1/Password@123, pharmacy1/Password@123.",
+  "seed_data_creation": "No new seed created. Reused existing CASE-000008 (WAITING_FOR_DOCTOR, hemanth), CASE-000025 (AWAITING_PRO_REVIEW), CASE-000032 (CLOSED), CASE-000031 (PAYMENT_PENDING -> SENT_TO_PHARMACY -> CLOSED post-dispense), and TEST_ITER9R_* pharmacy reminders from prior iterations.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iteration_9 frontend acceptance criteria pass. Login form testids are login-username-input / login-password-input / login-submit-button (NOT login-username / login-password / login-submit -- previous report had the short names which timed out). Between role switches, the httpOnly cookie auto-redirects /login away from the form -- POST /api/auth/logout to clear, then navigate to /login again. AUDIENCE_TABS keys are UPPERCASE ('ALL','MINE','PHARMACY') -> data-testid='audience-ALL' etc. Clicking 'ALL' deliberately does NOT send audience query param (backend treats absent param as ALL).",
+  "rca of the issue": "N/A -- no regressions found."
+}

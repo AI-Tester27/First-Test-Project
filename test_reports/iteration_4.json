@@ -1,0 +1,66 @@
+{
+  "summary": "Phase 4 backend testing complete. Added test_sparsa_round4.py (24 tests) covering admin user delete, patient PATCH/DELETE+cascade, reminders CRUD with audience scoping, follow-up notify_pharmacy, and three new dashboards (pharmacy/pro/admin-analytics) with IST date math. Full regression: 94/95 PASS (71 prior + 23 new). One real RBAC bug exposed plus one cascade-order code bug discovered via review.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PATCH /api/reminders/{id}",
+        "issue": "RBAC missing for RECEPTION (and PRO) — they can mark/edit ANY reminder. update_reminder uses Depends(get_current_user) and only role-checks DOCTOR (own) and PHARMACY (audience). RECEPTION/PRO fall through with no restriction, breaking the iteration_4 spec (\"PATCH same as reception1 returns 403\"). Test test_reception_cannot_patch_reminder FAILED with 200 instead of 403. Fix: change dependency to require_roles(OWNER_DOCTOR, DOCTOR, PHARMACY, ADMIN) — match DELETE/CREATE behaviour.",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "DELETE /api/patients/{id}",
+        "issue": "Cascade is broken by statement ordering. routers/patients.py lines 99-108 delete cases FIRST, then query cases.find({patient_id}) to collect case_ids — which is always empty because the cases just got deleted. Result: clinical_notes, prescriptions, pharmacy_dispense, payments, attachments are ORPHANED in the DB after patient delete (they all key off case_id, not patient_id). Reminders cascade still works because that's keyed off patient_id directly. The dedicated cascade test passed only because it didn't assert orphan-removal of these collateral collections. Fix: collect case_ids BEFORE delete_many on cases.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/reminders",
+        "issue": "create_reminder uses Depends(require_roles(OWNER_DOCTOR, DOCTOR, ADMIN)) — RECEPTION and PRO are blocked from creating reminders. Spec mentioned 'Reception/Owner/Admin' for the patient endpoints but reminders are limited to clinicians+admin. Reception cannot create manual reminders (call-back, follow-up reminders for the front desk). Confirm intent vs. spec wording 'Reception/Owner/Admin: ... Reminders: POST /api/reminders'. If reception should be allowed, add ROLE_RECEPTION."
+      },
+      {
+        "endpoint": "GET /api/pro/dashboard",
+        "issue": "followups_today shape mismatch with spec. Spec says 'followups_today (array)'. Backend returns BOTH followups_today_count (number) and followups_today (array of up to 20 reminder docs). The array test passes, but the response includes scheduled_at/PENDING+SENT reminders for ALL doctors (no role scoping). PRO can see private reminder messages. Consider scoping or stripping the 'message' field for PRO viewers."
+      },
+      {
+        "endpoint": "GET /api/admin/analytics top_complaints",
+        "issue": "Token-level word-count is too naive; will surface noise like 'with', 'days', 'pain', proper nouns. Hard-coded stopword set is short. Consider tf-idf or pre-built medical-term filter. Not blocking."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_sparsa_round4.py",
+    "/app/test_reports/pytest/iteration4_round4.xml",
+    "/app/test_reports/pytest/iteration4_full.xml"
+  ],
+  "action_items": [
+    "Fix routers/reminders.py update_reminder dependency to require_roles(OWNER_DOCTOR, DOCTOR, PHARMACY, ADMIN) so reception/pro get 403.",
+    "Fix routers/patients.py delete_patient ordering: collect case_ids BEFORE await db.cases.delete_many — otherwise clinical_notes/prescriptions/payments/dispense are orphaned.",
+    "Decide whether RECEPTION should be allowed to POST /api/reminders (spec wording is ambiguous).",
+    "Optionally: scope or trim PRO's followups_today payload to avoid leaking clinician-private notes."
+  ],
+  "critical_code_review_comments": [
+    "BUG (HIGH): routers/patients.py:99-108 — `await db.cases.delete_many({patient_id})` runs BEFORE `case_ids_cursor = db.cases.find({patient_id})`. The subsequent find returns 0 rows, so cascade through clinical_notes/prescriptions/pharmacy_dispense/payments/attachments NEVER executes. Move the find above the delete_many.",
+    "BUG (HIGH): routers/reminders.py:68-99 — update_reminder is gated only by get_current_user. RECEPTION and PRO are not in the role-check ladder, so they bypass authorisation. Should mirror delete_reminder which uses require_roles(OWNER_DOCTOR, DOCTOR, ADMIN) plus PHARMACY for audience matches.",
+    "routers/reminders.py:46 — create_reminder computes doctor_id by looking up payload.case_id even when case_id is None — `db.cases.find_one({id: None})` is wasteful but harmless. Skip the second lookup when case_id is falsy.",
+    "routers/dashboards.py uses datetime.now(ist) inside a for-loop seven (and thirty) times — minor: hoist to a single variable outside the loop to avoid clock drift across iterations.",
+    "routers/dashboards.py admin_analytics fetches up to 5000 cases per request to compute top_complaints. With growth this becomes expensive — consider aggregating server-side or caching the result for 15-30 minutes.",
+    "routers/dashboards.py:101 followups_today returns full reminder docs with internal 'message' field — consider role-based field stripping for PRO.",
+    "Carry-over (still applicable, not blockers): send_whatsapp/send_sms remain sync inside async, attachment soft-delete only, CSV exports load to_list before stream, attachment upload reads full body before 10MB check, AI prompt body not sanitised for injection. Twilio + WhatsApp providers intentionally unconfigured."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sparsa_round4.py (NEW — 24 tests for Phase 4 endpoints)"
+  ],
+  "success_rate": {
+    "backend": "98.9% (94/95 = 71 prior regression + 23 new pass; 1 RBAC bug fail). 100% prior-regression pass.",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": "From /app/memory/test_credentials.md: admin1/jyothi/hemanth/reception1/pharmacy1/pro1 all Password@123. All verified.",
+  "seed_data_creation": "Created TEST_R4_* patients across the test classes (patient, cascade, reminder fixture, follow-up). All inserted under TEST_ prefix; no teardown — preserved for next iteration. Also exercised jyothi's deactivation flow (test re-activates her at the end so subsequent fixtures/users stay valid).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Four test files now form the regression: test_sparsa_backend.py (33), test_sparsa_round2.py (20), test_sparsa_recap.py (18), test_sparsa_round4.py (24). Full pytest backend/tests/ runs in ~70s. Two real bugs filed: (1) PATCH /reminders missing RBAC for reception/pro, (2) DELETE /patients cascade-order bug orphans collateral collections. After main agent fixes, re-run only the failed test test_sparsa_round4.py::TestReminders::test_reception_cannot_patch_reminder and write a new orphan-verification test (post-cascade GET on clinical_notes/payments). Note: AI/LLM and pharmacy/payment flows untouched this round; they still pass via the existing regression files. Twilio/WhatsApp still intentionally unconfigured.",
+  "rca of the issue": "Bug 1 (reminders PATCH RBAC): routers/reminders.py:72 declares `user: dict = Depends(get_current_user)` — this dependency only verifies that SOMEONE is logged in. The subsequent role logic inside the function whitelists DOCTOR/PHARMACY behaviour but never explicitly DENIES other roles, so the function falls through and applies updates. Fix: `user: dict = Depends(require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_PHARMACY, ROLE_ADMIN))`. Reproduction: login reception1, POST a pharmacy reminder via jyothi, PATCH it via reception1 → 200 OK instead of 403. Bug 2 (cascade order): swap the find+delete_many sequence in routers/patients.py:99-108 so case_ids are collected first. Reproduction: create patient → case → clinical_notes → prescription → payment → DELETE /patients/{id} as admin → query db.clinical_notes.find({case_id: <deleted>}) → rows still exist."
+}

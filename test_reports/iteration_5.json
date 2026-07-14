@@ -1,0 +1,41 @@
+{
+  "summary": "Re-tested iteration_4 HIGH-priority fixes. Both root-cause fixes confirmed working: (1) PATCH /api/reminders/{id} now correctly returns 403 for RECEPTION and PRO via require_roles(OWNER_DOCTOR, DOCTOR, PHARMACY, ADMIN); PHARMACY still allowed on PHARMACY-audience reminders. (2) DELETE /api/patients/{id} cascade ordering fixed — case_ids are collected BEFORE delete_many on cases, so clinical_notes/prescriptions/payments/pharmacy_dispense are hard-deleted and attachments are soft-deleted (is_deleted=true). Added 3 new tests in TestReminders + 1 new TestPatientDeleteOrphanCheck class verifying DB-level orphan cleanup. Full regression: 98/98 PASS (~67s).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/reminders", "issue": "Carry-over from iteration_4 — RECEPTION/PRO still cannot CREATE reminders (require_roles excludes them). Spec wording was ambiguous; main agent's decision to keep clinicians+admin only is consistent. Re-confirm intent if reception ever needs to schedule call-back reminders."},
+      {"endpoint": "GET /api/pro/dashboard", "issue": "Carry-over — followups_today array still returns full reminder docs including the private 'message' field; PRO viewers can read clinician-written messages. Consider field-stripping for PRO role."},
+      {"endpoint": "GET /api/admin/analytics top_complaints", "issue": "Carry-over — naive token word-count surfaces noise words. Non-blocking."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_sparsa_round4.py",
+    "/app/test_reports/pytest/iteration5_round4.xml",
+    "/app/test_reports/pytest/iteration5_full.xml"
+  ],
+  "action_items": [
+    "(Optional) Trim or scope the 'message' field on PRO dashboard followups_today to avoid leaking clinical notes.",
+    "(Optional) Decide whether RECEPTION should be allowed to POST /api/reminders for front-desk callbacks.",
+    "(Optional) Improve top_complaints with a richer stopword list or server-side aggregation when cases scale."
+  ],
+  "critical_code_review_comments": [
+    "VERIFIED FIX: routers/reminders.py:72 — update_reminder now uses require_roles(ROLE_OWNER_DOCTOR, ROLE_DOCTOR, ROLE_PHARMACY, ROLE_ADMIN). RECEPTION and PRO are correctly rejected with 403. Inner DOCTOR own-check (line 79) and PHARMACY audience-check (line 81) preserved.",
+    "VERIFIED FIX: routers/patients.py:98-109 — case_ids are collected BEFORE delete_many on cases. Cascade through clinical_notes/prescriptions/pharmacy_dispense/payments now executes correctly. attachments soft-delete via update_many also works. Audit log at end.",
+    "Carry-over (not blockers): send_whatsapp/send_sms remain sync inside async; attachment upload reads full body before 10MB check; admin_analytics fetches up to 5000 cases; AI prompt body not sanitised for injection. Twilio + WhatsApp providers intentionally unconfigured."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sparsa_round4.py (added 2 reminders RBAC tests + new TestPatientDeleteOrphanCheck class — now 30 tests in this file, 98 across whole suite)"
+  ],
+  "success_rate": {
+    "backend": "100% (98/98). Previously failing test_reception_cannot_patch_reminder now PASS. New test_pro_cannot_patch_reminder PASS. New test_pharmacy_can_still_patch_pharmacy_reminder PASS. New test_cascade_purges_collaterals_and_soft_deletes_attachments PASS.",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": "From /app/memory/test_credentials.md: admin1/jyothi/hemanth/reception1/pharmacy1/pro1 all Password@123. All verified.",
+  "seed_data_creation": "Added TEST_R5_ORPHAN_* patient with case+notes+rx+payment+attachment+pharmacy_dispense to drive the orphan-verification cascade test. Patient and case are deleted at the end of the test by design; the attachment doc is left soft-deleted in db.attachments with is_deleted=true. Previous TEST_R4_* fixtures from iteration_4 may still be present.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Backend regression now 98/98 across 4 files (test_sparsa_backend 33 + test_sparsa_round2 20 + test_sparsa_recap 18 + test_sparsa_round4 30). Total run ~67s. Direct-DB validation via pymongo is now in place for the patient-delete cascade. Twilio/WhatsApp remain intentionally unconfigured (POST /reminders/{id}/send_now returns provider-not-configured 200/4xx as expected). AI key still live. No new bugs found.",
+  "rca of the issue": "Both iteration_4 RCAs verified resolved. (1) routers/reminders.py:72 dependency updated from get_current_user to require_roles(OWNER_DOCTOR, DOCTOR, PHARMACY, ADMIN). Reception/PRO now hit the role gate and receive 403 before any handler code runs. (2) routers/patients.py:99-100 swapped to async list comprehension on db.cases.find(...) BEFORE db.cases.delete_many(...), so case_ids is populated and the subsequent delete_many on clinical_notes/prescriptions/pharmacy_dispense/payments and update_many on attachments operate on the correct id set. Reproduction (positive): create patient -> case -> notes+rx+payment+attachment+pharmacy_dispense -> DELETE patient as admin -> pymongo count_documents for each collateral collection returns 0 (or is_deleted=true for attachments)."
+}
