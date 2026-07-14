@@ -1,0 +1,64 @@
+{
+  "summary": "Phase B/C/D backend tested via pytest (32 tests, 30 pass, 2 fail). Phase B has a CRITICAL backend bug: list_patients filter uses user['id'] (User UUID) instead of user.get('doctor_id') (DoctorProfile UUID), so a non-owner DOCTOR (hemanth) sees ZERO patients on GET /api/patients — confirmed by my test_doctor_sees_only_own_patients (expected hemanth_pid in result, got empty set) AND by the frontend smoke test (Doctor 'My Patients' page renders with search input but no QuickContact buttons because the list is empty). Phase D minor gap: UserUpdateIn.password has no min_length — admin can reset to a 5-char password (returns 200 instead of spec-mandated 422/400). All Phase C endpoints (/pro/financial-search, /pro/analytics, PAYMENT_PROOF attachments with PRO RBAC, kind filtering) and Phase D AI recap brief/detailed RBAC pass cleanly including the mode='detailed' Markdown sections (1-6 + ⚠️ Disclaimer + Mother Tincture). Doctor sidebar correctly shows 'My Patients' link, My Queue still correctly filters by doctor_id (different code path that works).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/patients (as DOCTOR)",
+        "issue": "RBAC filter in routers/patients.py:list_patients uses {'assigned_doctor_id': user['id']} but assigned_doctor_id is a doctor_profile.id (set from payload.consulting_doctor_id), not the User row id. Result: non-owner doctor (hemanth) receives an EMPTY patient list. Fix: change line 45 to db.cases.distinct('patient_id', {'assigned_doctor_id': user.get('doctor_id')}). Same pattern is already correctly used at line 184 in patient_timeline.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "PATCH /api/admin/users/{id}",
+        "issue": "models.UserUpdateIn.password has Optional[str] with no min_length validator. A 5-char password (e.g. 'short') is accepted and hashed — returns 200. Spec requires <8 chars → 422/400. Fix: add Field(default=None, min_length=8) on UserUpdateIn.password (and ideally UserCreateIn.password too)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Doctor /doctor/patients page",
+        "issue": "Renders correctly with data-testid='doctor-patient-search' and the sidebar 'My Patients' link is visible, BUT the patient grid is empty for hemanth — root cause is the backend Phase B bug above, not a frontend issue. Page itself is implemented correctly.",
+        "selector": "[data-testid='doctor-patient-search']",
+        "priority": "BLOCKED_BY_BACKEND"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase_bcd.py",
+    "/app/test_reports/pytest/iteration8_phaseBCD.xml"
+  ],
+  "action_items": [
+    "FIX (CRITICAL): /app/backend/routers/patients.py line 45 — replace `user['id']` with `user.get('doctor_id')` in the assigned_doctor_id query. This unblocks Phase B end-to-end (My Patients page for non-owner doctors). After fix, re-run test_phase_bcd.py::TestPhaseB_PatientsRBAC::test_doctor_sees_only_own_patients (expected PASS).",
+    "FIX (minor): add `min_length=8` to UserUpdateIn.password (and UserCreateIn.password) in /app/backend/models.py to enforce the spec's <8 char rejection.",
+    "Re-run frontend smoke for /doctor/patients after backend fix — hemanth should then see TEST_BCD_Hpatient row with qc-call / qc-sms / qc-whatsapp QuickContact buttons. Jyothi (owner) currently works (Phase B endpoint returns both patients)."
+  ],
+  "critical_code_review_comments": [
+    "routers/patients.py:list_patients — same RBAC filter mistake (user['id'] vs doctor_id) does not exist in patient_timeline (line 184), so the inconsistency is a copy-paste oversight. Add a unit test to prevent regression.",
+    "models.py:UserUpdateIn and UserCreateIn — no min_length on password. Combined with the admin reset endpoint silently accepting any string, this is a security/spec gap. Recommend a shared validator (e.g. Field(min_length=8, max_length=128)).",
+    "routers/payments.py:financial_search — `payments` cursor is fetched with `.to_list(200)` but a single patient with >200 historical visits would silently truncate billing totals. Low-risk today; consider streaming aggregation if scale grows.",
+    "routers/dashboards.py:pro_analytics — duplicated IST/UTC bucket-building code with admin_analytics; consider extracting `daily_bucket_pipeline(field, start, end)` helper to DRY.",
+    "routers/attachments.py:upload_attachment — load_case_for_user is called AFTER reading the full file into memory. If access is going to be denied, we waste up to 10MB of read. Move the access check before the read loop.",
+    "routers/ai.py:ai_visit_recap — narrative includes full clinical_notes + prescriptions for every visit but is passed as a single prompt; for patients with 30+ visits this can blow the context. Consider truncating to last N visits + summarising older ones.",
+    "Phase D detailed mode — verified Markdown contains '## 1.', 'Tincture', 'Disclaimer' headers as spec'd; visually consistent with the contract."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_bcd.py (new — 32 pytest tests covering Phases B/C/D)",
+    "/app/test_reports/iteration_8.json (this report)",
+    "/app/test_reports/pytest/iteration8_phaseBCD.xml (junit output)"
+  ],
+  "success_rate": {
+    "backend": "93.75% (30/32)",
+    "frontend": "partial — Phase B sidebar + page shell verified; full PRO/Admin flows blocked by login-form selector flake during the smoke run (data-testid based login worked the first time but the loop's fallback selector did not find inputs after navigation). All Phase B-blocking issues come from backend."
+  },
+  "test_credentials": "Used /app/memory/test_credentials.md verbatim (admin1, jyothi, hemanth, reception1, pharmacy1, pro1). All authenticated successfully via /api/auth/login. Created throwaway user 'test_pwd_reset_user' (RECEPTION) for password-reset tests; password ends up 'NewPass@9999' after the suite runs — safe to leave or main agent can DELETE.",
+  "seed_data_creation": "Created 2 new patients prefixed TEST_BCD_ (TEST_BCD_Hpatient X assigned to Dr. Hemanth, TEST_BCD_Jpatient Y assigned to Dr. Jyothi) plus their cases. Uploaded ~3 tiny PNG attachments (PAYMENT_PROOF + GENERAL) to the Jyothi case for attachment-listing tests. Database state from iteration_7 (TEST_FIR_*, TEST_E2E_Alpha, TEST_Followup, TEST_Sched, TEST_Legacy, TEST_PatchBMI) is preserved and reused.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file at /app/backend/tests/test_phase_bcd.py is reusable as Phase B/C/D regression. The two failing tests precisely encode the two bugs — after main agent applies the two-line fix in routers/patients.py and the Field(min_length=8) addition in models.py, both should flip to PASS. Frontend Phase B re-verification just needs: login as hemanth → /doctor/patients → confirm TEST_BCD_Hpatient row appears with QuickContact buttons qc-call/qc-sms/qc-whatsapp. The login form uses data-testid='login-username' / 'login-password' / 'login-submit'. PRO financial-search and analytics frontends were NOT visually verified end-to-end in this iteration — recommend a quick smoke pass after main agent's fix. Tip: between role-switches in playwright, always re-navigate to /login (not just /pro/...) because the previous httpOnly session may still be active and redirect away from /login.",
+  "rca of the issue": "Phase B RBAC bug: the User document has fields {id, username, role, doctor_id, ...}. doctor_id is the FK to doctor_profiles.id. Cases store assigned_doctor_id = doctor_profiles.id. The line `await db.cases.distinct('patient_id', {'assigned_doctor_id': user['id']})` compares a doctor_profile UUID against a User UUID — they are different namespaces, so the result is always []. The fix is the same one-liner already used correctly at line 184 in patient_timeline. The Phase D password length bug is purely a missing Pydantic Field constraint."
+}

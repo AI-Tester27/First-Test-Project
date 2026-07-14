@@ -1,0 +1,45 @@
+{
+  "summary": "Phase 3 backend testing complete. Full regression of iteration_1 (33 tests) + iteration_2 (20 tests) PASSES unchanged after the big router-split refactor. Added 18 new tests covering POST /api/patients/{id}/ai/recap (RBAC, doctor scope, audit logging, edge cases). Grand total: 71/71 PASS (100%).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sparsa_recap.py",
+    "/app/backend/tests/test_sparsa_round2.py",
+    "/app/backend/tests/test_sparsa_backend.py",
+    "/app/test_reports/pytest/iteration3_full.xml",
+    "/app/test_reports/pytest/iteration3_recap.xml",
+    "/app/test_reports/pytest/iteration3_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Refactor is clean: server.py reduced to 64 lines, all routers <220 lines (largest cases.py = 212). Past iteration_2's main complaint (single 1154-line file) is fully resolved.",
+    "routers/ai.py _call_llm helper is shared between per-case and per-patient endpoints — good DRY. Async correct.",
+    "AI recap doctor-scope filter (q['assigned_doctor_id'] = user.get('doctor_id') when role==DOCTOR) is correctly applied BEFORE the empty check, so Hemanth gets 404 'No accessible visits' for Jyothi-only patients — verified by test.",
+    "Audit log payload {action: 'recap', visits: N} is written and asserted from /admin/audit-logs — works.",
+    "Minor: ai/recap caps cases at 200 (.to_list(200)). For chronic-disease patients with >200 visits this silently truncates without flagging in the response. Consider returning a 'truncated' flag or surfacing total_visits separately when len(cases)==200.",
+    "Minor: AI prompt body concatenation does not strip carriage returns or LLM injection patterns from complaint_text. Patients with malicious content in their complaint could attempt prompt injection. Low risk for an internal clinic tool, but worth a sanitization pass.",
+    "Carry-over from iteration_2 (still applicable, not blockers): send_whatsapp/send_sms still use sync requests.post inside async path; attachment delete is soft-only; CSV exports load full to_list before streaming; attachment upload reads full body before 10MB check. None blocking but worth scheduling.",
+    "Twilio + WhatsApp credentials still unconfigured (intentional per problem statement). /api/health correctly reports providers.{whatsapp:false, sms:false} and reminder send-now returns FAILED with PROVIDER_NOT_CONFIGURED."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sparsa_recap.py (new — 18 tests for recap endpoint + refactor sanity)"
+  ],
+  "success_rate": {
+    "backend": "100% (71/71 = 33 iter1 + 20 iter2 + 18 iter3-recap)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": "From /app/memory/test_credentials.md: admin1, jyothi, hemanth, reception1, pharmacy1, pro1 — all Password@123. All 6 logins verified working.",
+  "seed_data_creation": "Created 3 TEST_RECAP_ patients: (1) TEST_RECAP_HEM_* with 2 cases both assigned to Hemanth, (2) TEST_RECAP_JYO_* with 1 case assigned to Jyothi, (3) TEST_RECAP_MIX_* with 3 cases (2 Hemanth + 1 Jyothi) to validate doctor-scope filter. Each case has clinical notes + 1 prescription. No teardown — TEST_ prefix preserved for next iteration.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Three test files now form the complete backend regression: test_sparsa_backend.py (33), test_sparsa_round2.py (20), test_sparsa_recap.py (18). Run all together: `pytest backend/tests/ -v` — completes in ~70s. The recap endpoint validates: doctor scope (DOCTOR sees only own cases, OWNER_DOCTOR/ADMIN see all), 404 for missing patient, 404 for no-accessible-visits, 403 for RECEPTION/PHARMACY/PRO, and AI_USED/Patient/recap audit log entry with metadata.visits matching visits_analysed. AI calls go through real Claude Sonnet 4.5 via EMERGENT_LLM_KEY — each recap takes ~2-4s. Twilio/WhatsApp still intentionally unconfigured.",
+  "rca of the issue": "N/A — no failures."
+}
