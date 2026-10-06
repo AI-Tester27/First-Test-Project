@@ -1,0 +1,15 @@
+cat > .gitignore <<'EOF'
+# Python virtual environment
+backend/venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Node dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+EOF
