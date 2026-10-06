@@ -67,7 +67,7 @@ export default function LoginPage() {
                 fontFamily: "'Cormorant Garamond', serif",
               }}
             >
-              Sparsha Homeo Care
+              Sparsa Homeo Care
             </h1>
 
             <p className="mt-2 text-green-200 uppercase tracking-[0.35em] text-lg">
@@ -105,7 +105,7 @@ export default function LoginPage() {
             <p className="mt-6 text-xl text-white/90 leading-10 max-w-xl">
               A complete digital platform for managing patient
               consultations, pharmacy operations, billing and
-              clinical workflows at Sparsha Homeo Care.
+              clinical workflows at Sparsa Homeo Care.
             </p>
 
             {/* Feature Cards */}

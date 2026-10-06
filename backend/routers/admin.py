@@ -1,6 +1,9 @@
 """Admin endpoints: user management, audit log, stats."""
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
+from openai import OpenAI
+from anthropic import Anthropic
+import google.generativeai as genai
 
 from core import (
     db, now_utc, hash_pw, audit,
@@ -192,7 +195,7 @@ async def set_ai_settings(
         provider = raw.get("AI_PROVIDER")
         if not provider:
             doc = await db.settings.find_one({"_id": "ai"}) or {}
-            provider = doc.get("AI_PROVIDER") or "anthropic"
+            provider = doc.get("AI_PROVIDER") or "openai"
         if raw["AI_MODEL"] not in MODELS.get(provider, []):
             raise HTTPException(status_code=400, detail=f"Unknown model for {provider}")
     to_set: dict = {}
@@ -222,25 +225,88 @@ async def test_ai_key(
     payload: AITestIn,
     user: dict = Depends(require_roles(ROLE_ADMIN)),
 ):
-    """Fire a tiny prompt at the provider with the given (or stored) key."""
     if payload.provider not in PROVIDERS:
-        raise HTTPException(status_code=400, detail=f"provider must be one of {PROVIDERS}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"provider must be one of {PROVIDERS}",
+        )
+
     key = (payload.api_key or "").strip()
+
     if not key:
         doc = await db.settings.find_one({"_id": "ai"}) or {}
         key = (doc.get(KEY_FIELD[payload.provider]) or "").strip()
+
     if not key:
-        raise HTTPException(status_code=400, detail="No key provided and none stored for this provider")
+        raise HTTPException(
+            status_code=400,
+            detail="No key provided and none stored for this provider",
+        )
+
     model = MODELS[payload.provider][0]
+
     try:
-        import uuid as _uuid
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=key,
-            session_id=f"keytest-{_uuid.uuid4()}",
-            system_message="You are a connectivity test. Reply with exactly: OK",
-        ).with_model(payload.provider, model)
-        reply = await chat.send_message(UserMessage(text="Reply with exactly: OK"))
-        return {"ok": True, "provider": payload.provider, "model": model, "reply": str(reply)[:100]}
+
+        if payload.provider == "openai":
+
+            client = OpenAI(api_key=key)
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Reply with exactly: OK",
+                    }
+                ],
+            )
+
+            reply = response.choices[0].message.content
+
+        elif payload.provider == "anthropic":
+
+            client = Anthropic(api_key=key)
+
+            response = client.messages.create(
+                model=model,
+                max_tokens=10,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Reply with exactly: OK",
+                    }
+                ],
+            )
+
+            reply = response.content[0].text
+
+        elif payload.provider == "gemini":
+
+            genai.configure(api_key=key)
+
+            model_obj = genai.GenerativeModel(model)
+
+            response = model_obj.generate_content(
+                "Reply with exactly: OK"
+            )
+
+            reply = response.text
+
+        else:
+            raise Exception("Unsupported provider")
+
+        return {
+            "ok": True,
+            "provider": payload.provider,
+            "model": model,
+            "reply": reply,
+        }
+
     except Exception as e:
-        return {"ok": False, "provider": payload.provider, "model": model, "error": str(e)[:300]}
+
+        return {
+            "ok": False,
+            "provider": payload.provider,
+            "model": model,
+            "error": str(e),
+        }

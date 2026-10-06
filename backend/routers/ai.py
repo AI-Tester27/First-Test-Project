@@ -1,9 +1,11 @@
 """AI assist endpoints: per-case, per-patient (recap), and notes parsing."""
 import json
 import re
-import uuid
 import logging
 from fastapi import APIRouter, Depends, HTTPException
+from openai import OpenAI
+from anthropic import Anthropic
+import google.generativeai as genai
 
 from core import (
     db, audit,
@@ -18,27 +20,69 @@ log = logging.getLogger(__name__)
 
 
 async def _call_llm(system: str, user_text: str, tag: str) -> str:
-    """Call the configured AI provider. Uses the admin's own key when set;
-    on failure (invalid/expired key) retries once with the built-in Emergent key."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    """Call the configured AI provider."""
     from ai_settings import resolve_ai_config
     cfg = await resolve_ai_config(db)
 
-    async def _run(key: str) -> str:
-        chat = LlmChat(
-            api_key=key,
-            session_id=f"ai-{tag}-{uuid.uuid4()}",
-            system_message=system,
-        ).with_model(cfg["provider"], cfg["model"])
-        return await chat.send_message(UserMessage(text=user_text))
+    provider = cfg["provider"].lower()
+    model = cfg["model"]
+    api_key = cfg["api_key"]
 
     try:
-        return await _run(cfg["api_key"])
-    except Exception:
-        if cfg["key_source"] == "own" and cfg["fallback_key"]:
-            log.warning("Own %s key failed for %s; falling back to Emergent key", cfg["provider"], tag)
-            return await _run(cfg["fallback_key"])
-        raise
+
+        if provider == "openai":
+            client = OpenAI(api_key=api_key)
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_text},
+                ],
+            )
+
+            return response.choices[0].message.content
+
+        elif provider == "anthropic":
+            client = Anthropic(api_key=api_key)
+
+            response = client.messages.create(
+                model=model,
+                max_tokens=2000,
+                system=system,
+                messages=[
+                    {
+                       "role": "user",
+                       "content": user_text,
+                    }
+                ],
+            )
+
+            return response.content[0].text
+
+        elif provider == "gemini":
+            genai.configure(api_key=api_key)
+
+            model_obj = genai.GenerativeModel(model)
+
+            response = model_obj.generate_content(
+                system + "\n\n" + user_text
+            )    
+
+            return response.text
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                 detail=f"Unsupported AI provider: {provider}",
+            )
+
+    except Exception as e:
+        log.exception("AI Provider Error")
+        raise HTTPException(
+            status_code=502,
+            detail=str(e),
+        )
 
 
 @router.post("/cases/{case_id}/ai/{action}")
